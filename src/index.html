@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Private Vedic Auto-Matching</title>
+  <link rel="stylesheet" href="styles.css" />
+  <script type="importmap">
+  {
+    "imports": {
+      "@cofhe/sdk/web": "https://esm.sh/@cofhe/sdk@0.5.1/web",
+      "@cofhe/sdk": "https://esm.sh/@cofhe/sdk@0.5.1",
+      "@cofhe/sdk/chains": "https://esm.sh/@cofhe/sdk@0.5.1/chains"
+    }
+  }
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/html-to-image@1.11.11/dist/html-to-image.min.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <h1>✦ Vedic Match</h1>
+      <p class="subtitle">Find your cosmic match — privately, on-chain.</p>
+    </div>
+    <div class="inline-row">
+      <button id="connectBtn" class="btn secondary">Connect Wallet</button>
+      <span id="walletBadge" class="badge">Not connected</span>
+    </div>
+  </header>
+
+  <main class="container">
+
+    <section class="card">
+      <h2>Your Profile</h2>
+      <p class="muted">Encrypted before it leaves your browser. Only you hold the key.</p>
+
+      <form id="profileForm" class="form-grid">
+        <label>Name
+          <input id="name" type="text" placeholder="Your name" required />
+        </label>
+        <label>X handle
+          <input id="xHandle" type="text" placeholder="@yourhandle" required />
+        </label>
+        <label>Date of birth
+          <input id="dob" type="date" required />
+        </label>
+        <label>Time of birth
+          <input id="tob" type="time" required />
+        </label>
+        <label>Birthplace
+          <input id="birthplace" type="text" placeholder="City, Country" required />
+        </label>
+
+        <div class="inline-row" style="margin-top:4px;">
+          <button class="btn" type="submit" id="submitProfileBtn">Encrypt &amp; Join Pool</button>
+          <button id="clearBtn" class="btn secondary" type="button">Clear</button>
+          <button id="withdrawBtn" class="btn secondary" type="button">Leave Pool</button>
+        </div>
+      </form>
+
+      <div id="createStatus" class="notice">No active profile yet.</div>
+    </section>
+
+    <section class="card">
+      <h2>Match Status</h2>
+      <div id="matchingStatus" class="state-card">Looking for compatibility…</div>
+      <div class="inline-row">
+        <button id="syncBtn" class="btn">Refresh</button>
+      </div>
+      <div id="runCountdown" class="countdown-pill">Next sweep in 00:60</div>
+    </section>
+
+    <section class="card card-wide">
+      <h2>Your Matches</h2>
+      <div id="results" class="results-list"></div>
+    </section>
+
+  </main>
+
+  <!-- Match card viewer (See Your Match) -->
+  <div id="cardModal" class="card-modal-overlay" hidden>
+    <div class="card-modal-inner">
+      <button class="card-modal-close" id="cardModalClose" aria-label="Close">×</button>
+      <div id="cardModalMount"></div>
+    </div>
+  </div>
+
+  <!-- Match celebration modal -->
+  <div id="matchModal" class="modal-overlay" hidden>
+    <div class="modal-card">
+      <button class="modal-close" id="matchModalClose" aria-label="Close">×</button>
+      <div class="modal-emoji">✨</div>
+      <h2 id="matchModalTitle">It's a Match!</h2>
+      <div id="matchModalBody" class="modal-body"></div>
+      <div class="modal-actions">
+        <a id="matchModalShare" class="btn" href="#" target="_blank" rel="noopener">Share on X</a>
+        <button class="btn secondary" id="matchModalDismiss" type="button">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="script.js"></script>
+</body>
+</html>

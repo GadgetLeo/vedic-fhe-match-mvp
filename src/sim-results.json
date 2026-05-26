@@ -1,0 +1,273 @@
+{
+  "generated_at": "2026-05-26",
+  "suites": [
+    {
+      "suite": "State Machine Simulation (sim_test.py)",
+      "total": 7,
+      "passed": 7,
+      "failed": 0,
+      "status": "pass",
+      "output": "All backend state-machine simulation tests passed.\nSnapshot sample: [{'match_id': 11, 'state': 'Revealed', 'close_reason': 'None', 'consent_a': True, 'consent_b': True}, {'match_id': 12, 'state': 'Closed', 'close_reason': 'Superseded', 'consent_a': True, 'consent_b': True}]",
+      "tests": [
+        {
+          "label": "Qualified match \u2192 PendingConsent",
+          "status": "pass"
+        },
+        {
+          "label": "Non-qualified \u2192 Closed(NotQualified)",
+          "status": "pass"
+        },
+        {
+          "label": "Second consent \u2192 Decrypting",
+          "status": "pass"
+        },
+        {
+          "label": "closeExpiredMatch skips Decrypting",
+          "status": "pass"
+        },
+        {
+          "label": "on_decryption_fulfilled \u2192 Revealed",
+          "status": "pass"
+        },
+        {
+          "label": "Supersede: sibling closed",
+          "status": "pass"
+        },
+        {
+          "label": "closeStuckDecryption \u2192 DecryptFailed",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "suite": "Matcher Sweep Extension (sweep_test.py)",
+      "total": 19,
+      "passed": 19,
+      "failed": 0,
+      "status": "pass",
+      "output": "\u2500\u2500 MatcherQueue \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n  \u2705  enqueue and dequeue ordered\n  \u2705  lazy remove excludes evicted\n  \u2705  pending_count after remove\n\n\u2500\u2500 MatcherHeartbeat \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n  \u2705  alive within SLA\n  \u2705  no beat => not alive\n  \u2705  multiple beats / last_beat_ts\n\n\u2500\u2500 DelayedStatus \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n  \u2705  Queued when no heartbeat\n  \u2705  Processing when matcher alive\n  \u2705  Delayed when SLA exceeded\n  \u2705  Matched when has_revealed\n\n\u2500\u2500 RetryQueue \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n  \u2705  enqueue and due list\n  \u2705  exponential backoff\n  \u2705  max_attempts exhaustion\n  \u2705  complete removes job\n\n\u2500\u2500 SweepEngine \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n  \u2705  sweep qualified + not_qualified\n  \u2705  sweep retry on score failure\n  \u2705  expire ConsensExpired\n  \u2705  expire DecryptFailed\n\n\u2500\u2500 Full Integration \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n  \u2705  activate\u2192sweep\u2192consent\u2192reveal\u2192supersede\n\n\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nResults: 19/19 passed \ud83c\udf89",
+      "tests": [
+        {
+          "label": "enqueue and dequeue ordered",
+          "status": "pass",
+          "error": null
+        },
+        {
+          "label": "lazy remove excludes evicted",
+          "status": "pass",
+          "error": null
+        },
+        {
+          "label": "pending_count after remove",
+          "status": "pass",
+          "error": null
+        },
+        {
+          "label": "alive within SLA",
+          "status": "pass",
+          "error": null
+        },
+        {
+          "label": "no beat => not alive",
+          "status": "pass",
+          "error": null
+        },
+        {
+          "label": "multiple beats / last_beat_ts",
+          "status": "pass",
+          "error": null
+        },
+        {
+          "label": "Queued when no heartbeat",
+          "status": "pass",
+          "error": null
+        },
+        {
+          "label": "Processing when matcher alive",
+          "status": "pass",
+          "error": null
+        },
+        {
+          "label": "Delayed when SLA exceeded",
+          "status": "pass",
+          "error": null
+        },
+        {
+          "label": "Matched when has_revealed",
+          "status": "pass",
+          "error": null
+        },
+        {
+          "label": "enqueue and due list",
+          "status": "pass",
+          "error": null
+        },
+        {
+          "label": "exponential backoff",
+          "status": "pass",
+          "error": null
+        },
+        {
+          "label": "max_attempts exhaustion",
+          "status": "pass",
+          "error": null
+        },
+        {
+          "label": "complete removes job",
+          "status": "pass",
+          "error": null
+        },
+        {
+          "label": "sweep qualified + not_qualified",
+          "status": "pass",
+          "error": null
+        },
+        {
+          "label": "sweep retry on score failure",
+          "status": "pass",
+          "error": null
+        },
+        {
+          "label": "expire ConsensExpired",
+          "status": "pass",
+          "error": null
+        },
+        {
+          "label": "expire DecryptFailed",
+          "status": "pass",
+          "error": null
+        },
+        {
+          "label": "activate\u2192sweep\u2192consent\u2192reveal\u2192supersede",
+          "status": "pass",
+          "error": null
+        }
+      ]
+    },
+    {
+      "suite": "Integration Tests (integration_test.py)",
+      "total": 22,
+      "passed": 22,
+      "failed": 0,
+      "status": "pass",
+      "output": "\u2500\u2500 Koota Scorer \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n  \u2705  score in range 0-36\n  \u2705  score symmetric\n\n\u2500\u2500 IdempotencyStore \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n  \u2705  seen / mark lifecycle\n  \u2705  persists across instances\n\n\u2500\u2500 processAutoMatchesBatch \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n  \u2705  empty pool \u2192 zero pairs\n  \u2705  new pairs \u2192 tx returned\n  \u2705  idempotent: second run skips\n  \u2705  batch_size cap respected\n\n\u2500\u2500 submitMatchScore + retry \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n  \u2705  success returns True\n  \u2705  failure enqueues retry\n  \u2705  drain_retries resolves due jobs\n\n\u2500\u2500 Heartbeat \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n  \u2705  fires when due\n  \u2705  skipped when not due\n\n\u2500\u2500 Expiry Sweep \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n  \u2705  expiry_sweep mock no error\n\n\u2500\u2500 Sim Proof \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n  \u2705  proof is 32 bytes\n  \u2705  proof is deterministic\n  \u2705  different input \u2192 different proof\n\n\u2500\u2500 onDecryptionFulfilled callback \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n  \u2705  simulate callback mock\n\n\u2500\u2500 DecryptionCallbackMonitor \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n  \u2705  closes overdue stuck match\n  \u2705  skips fresh match in grace period\n\n\u2500\u2500 KeeperScheduler \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n  \u2705  single cycle runs all jobs\n  \u2705  respects intervals (skip all)\n\n\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nIntegration results: 22/22 passed \ud83c\udf89",
+      "tests": [
+        {
+          "label": "score in range 0-36",
+          "status": "pass",
+          "error": null
+        },
+        {
+          "label": "score symmetric",
+          "status": "pass",
+          "error": null
+        },
+        {
+          "label": "seen / mark lifecycle",
+          "status": "pass",
+          "error": null
+        },
+        {
+          "label": "persists across instances",
+          "status": "pass",
+          "error": null
+        },
+        {
+          "label": "empty pool \u2192 zero pairs",
+          "status": "pass",
+          "error": null
+        },
+        {
+          "label": "new pairs \u2192 tx returned",
+          "status": "pass",
+          "error": null
+        },
+        {
+          "label": "idempotent: second run skips",
+          "status": "pass",
+          "error": null
+        },
+        {
+          "label": "batch_size cap respected",
+          "status": "pass",
+          "error": null
+        },
+        {
+          "label": "success returns True",
+          "status": "pass",
+          "error": null
+        },
+        {
+          "label": "failure enqueues retry",
+          "status": "pass",
+          "error": null
+        },
+        {
+          "label": "drain_retries resolves due jobs",
+          "status": "pass",
+          "error": null
+        },
+        {
+          "label": "fires when due",
+          "status": "pass",
+          "error": null
+        },
+        {
+          "label": "skipped when not due",
+          "status": "pass",
+          "error": null
+        },
+        {
+          "label": "expiry_sweep mock no error",
+          "status": "pass",
+          "error": null
+        },
+        {
+          "label": "proof is 32 bytes",
+          "status": "pass",
+          "error": null
+        },
+        {
+          "label": "proof is deterministic",
+          "status": "pass",
+          "error": null
+        },
+        {
+          "label": "different input \u2192 different proof",
+          "status": "pass",
+          "error": null
+        },
+        {
+          "label": "simulate callback mock",
+          "status": "pass",
+          "error": null
+        },
+        {
+          "label": "closes overdue stuck match",
+          "status": "pass",
+          "error": null
+        },
+        {
+          "label": "skips fresh match in grace period",
+          "status": "pass",
+          "error": null
+        },
+        {
+          "label": "single cycle runs all jobs",
+          "status": "pass",
+          "error": null
+        },
+        {
+          "label": "respects intervals (skip all)",
+          "status": "pass",
+          "error": null
+        }
+      ]
+    }
+  ],
+  "summary": {
+    "total": 48,
+    "passed": 48,
+    "failed": 0
+  }
+}

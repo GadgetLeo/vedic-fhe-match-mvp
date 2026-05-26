@@ -1,0 +1,33 @@
+{
+  "_format": "hh-sol-artifact-1",
+  "contractName": "Common",
+  "sourceName": "@fhenixprotocol/cofhe-contracts/FHE.sol",
+  "abi": [
+    {
+      "inputs": [
+        {
+          "internalType": "bytes1",
+          "name": "char",
+          "type": "bytes1"
+        }
+      ],
+      "name": "InvalidHexCharacter",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "int32",
+          "name": "value",
+          "type": "int32"
+        }
+      ],
+      "name": "SecurityZoneOutOfBounds",
+      "type": "error"
+    }
+  ],
+  "bytecode": "0x6080806040523460175760399081601c823930815050f35b5f80fdfe5f80fdfea2646970667358221220df333f0ebc384382261af373983cbf0aed6bd8ce7de6ffaedde75597eba9c73764736f6c634300081c0033",
+  "deployedBytecode": "0x5f80fdfea2646970667358221220df333f0ebc384382261af373983cbf0aed6bd8ce7de6ffaedde75597eba9c73764736f6c634300081c0033",
+  "linkReferences": {},
+  "deployedLinkReferences": {}
+}

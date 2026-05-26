@@ -1,0 +1,8 @@
+{
+  "name": "vedic-deploy-minimal",
+  "version": "1.0.0",
+  "dependencies": {
+    "ethers": "^6.13.2",
+    "dotenv": "^16.4.5"
+  }
+}
