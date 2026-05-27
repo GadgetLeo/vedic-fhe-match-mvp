@@ -1,4 +1,4 @@
-import { createPublicClient, createWalletClient, custom, http } from 'viem';
+import { createPublicClient, createWalletClient, custom, http, getAddress, parseAbiItem } from 'viem';
 import { baseSepolia } from 'viem/chains';
 import { createCofheClient, createCofheConfig } from '@cofhe/sdk/web';
 import { Encryptable, FheTypes } from '@cofhe/sdk';
@@ -9,6 +9,9 @@ export const CONTRACT_ADDRESS = (import.meta.env.VITE_HOROSCOPE_MATCHER_ADDRESS 
 export const BASE_SEPOLIA_CHAIN_ID = 84532;
 const SAVE_PROFILE_GAS_LIMIT = 2_500_000n;
 const COMPUTE_MATCH_GAS_LIMIT = 3_000_000n;
+const compatibilityComputedEvent = parseAbiItem(
+  'event CompatibilityComputed(address indexed userA, address indexed userB, uint256 scoreHandle)',
+);
 
 const encryptedInputComponents = [
   { name: 'ctHash', type: 'uint256' },
@@ -268,6 +271,73 @@ export async function fetchProfiles(): Promise<PublicProfile[]> {
   );
 
   return profiles.filter((profile) => profile.exists);
+}
+
+export async function fetchProfileByAddress(address: `0x${string}`): Promise<PublicProfile | null> {
+  if (!CONTRACT_ADDRESS) return null;
+
+  const publicClient = getPublicClient();
+  const profile = await publicClient.readContract({
+    address: CONTRACT_ADDRESS,
+    abi: horoscopeAbi,
+    functionName: 'profiles',
+    args: [address],
+  });
+
+  if (!profile[4]) return null;
+
+  const hasChart = await publicClient.readContract({
+    address: CONTRACT_ADDRESS,
+    abi: horoscopeAbi,
+    functionName: 'hasEncryptedChart',
+    args: [address],
+  });
+
+  return {
+    address,
+    displayName: profile[0],
+    xHandle: profile[1],
+    avatarColor: profile[2],
+    createdAt: profile[3],
+    exists: profile[4],
+    hasChart,
+  };
+}
+
+export async function fetchMatchedProfilesForWallet(account: `0x${string}`): Promise<PublicProfile[]> {
+  if (!CONTRACT_ADDRESS) return [];
+
+  const publicClient = getPublicClient();
+  const normalizedAccount = getAddress(account);
+  const [asUserA, asUserB] = await Promise.all([
+    publicClient.getLogs({
+      address: CONTRACT_ADDRESS,
+      event: compatibilityComputedEvent,
+      args: { userA: normalizedAccount },
+      fromBlock: 0n,
+      toBlock: 'latest',
+    }),
+    publicClient.getLogs({
+      address: CONTRACT_ADDRESS,
+      event: compatibilityComputedEvent,
+      args: { userB: normalizedAccount },
+      fromBlock: 0n,
+      toBlock: 'latest',
+    }),
+  ]);
+
+  const counterparties = new Map<string, `0x${string}`>();
+  for (const log of [...asUserA, ...asUserB]) {
+    const userA = log.args.userA ? getAddress(log.args.userA) : null;
+    const userB = log.args.userB ? getAddress(log.args.userB) : null;
+    const other = userA?.toLowerCase() === normalizedAccount.toLowerCase() ? userB : userA;
+    if (other && other.toLowerCase() !== normalizedAccount.toLowerCase()) {
+      counterparties.set(other.toLowerCase(), other as `0x${string}`);
+    }
+  }
+
+  const profiles = await Promise.all([...counterparties.values()].map((address) => fetchProfileByAddress(address)));
+  return profiles.filter((profile): profile is PublicProfile => Boolean(profile?.exists));
 }
 
 export async function computeAndDecryptMatch(other: `0x${string}`, self: `0x${string}`, onStep: (label: string) => void) {

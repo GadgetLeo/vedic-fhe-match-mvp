@@ -1,7 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Download, LockKeyhole, RefreshCw, Search, ShieldCheck, Sparkles, Wallet } from 'lucide-react';
 import { toPng } from 'html-to-image';
-import { connectWallet, computeAndDecryptMatch, CONTRACT_ADDRESS, encryptAndSaveProfile, fetchProfiles } from './contract';
+import { getAddress, isAddress } from 'viem';
+import {
+  connectWallet,
+  computeAndDecryptMatch,
+  CONTRACT_ADDRESS,
+  encryptAndSaveProfile,
+  fetchMatchedProfilesForWallet,
+  fetchProfileByAddress,
+} from './contract';
 import { deriveChartFeatures, getBadges, getTier, nakshatraNames, signNames } from './chart';
 import { BirthForm, MatchResult, ProfileForm, PublicProfile } from './types';
 
@@ -44,7 +52,8 @@ export function App() {
   const [profile, setProfile] = useState(initialProfile);
   const [birth, setBirth] = useState(initialBirth);
   const [profiles, setProfiles] = useState<PublicProfile[]>(demoProfiles);
-  const [selectedProfile, setSelectedProfile] = useState<PublicProfile>(demoProfiles[0]);
+  const [selectedProfile, setSelectedProfile] = useState<PublicProfile | null>(demoProfiles[0]);
+  const [partnerAddress, setPartnerAddress] = useState('');
   const [status, setStatus] = useState('Ready to seal your chart');
   const [isBusy, setIsBusy] = useState(false);
   const [match, setMatch] = useState<MatchResult | null>(null);
@@ -54,10 +63,12 @@ export function App() {
   const hasContract = Boolean(CONTRACT_ADDRESS);
 
   useEffect(() => {
-    if (hasContract) {
-      void refreshProfiles();
+    if (!account) {
+      setProfiles(demoProfiles);
+      setSelectedProfile(demoProfiles[0]);
+      setStatus('Demo matches visible until a wallet connects');
     }
-  }, [hasContract]);
+  }, [account]);
 
   async function handleConnect() {
     setIsBusy(true);
@@ -66,6 +77,7 @@ export function App() {
       const address = await connectWallet();
       setAccount(address);
       setStatus('Wallet connected on Base Sepolia');
+      await refreshProfiles(address);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'Wallet connection failed');
     } finally {
@@ -79,7 +91,7 @@ export function App() {
     try {
       await encryptAndSaveProfile(profile, chart, setStatus);
       setStatus('Encrypted chart stored');
-      await refreshProfiles();
+      await refreshProfiles(account);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'Encrypted profile failed');
     } finally {
@@ -87,32 +99,57 @@ export function App() {
     }
   }
 
-  async function refreshProfiles() {
-    setStatus('Refreshing public profiles');
-    try {
-      const liveProfiles = await fetchProfiles();
-      const nextProfiles = liveProfiles.length > 0 ? liveProfiles : demoProfiles;
-      setProfiles(nextProfiles);
-      setSelectedProfile(nextProfiles[0]);
-      setStatus(liveProfiles.length > 0 ? 'Profiles loaded from contract' : 'No live profiles yet, showing demo cards');
-    } catch (error) {
+  async function refreshProfiles(viewer: `0x${string}` | null = account) {
+    if (!viewer) {
       setProfiles(demoProfiles);
       setSelectedProfile(demoProfiles[0]);
-      setStatus(error instanceof Error ? error.message : 'Using demo cards until contract is deployed');
+      setStatus('Demo matches visible until a wallet connects');
+      return;
+    }
+
+    setStatus('Refreshing your private match list');
+    try {
+      const liveProfiles = await fetchMatchedProfilesForWallet(viewer);
+      setProfiles(liveProfiles);
+      setSelectedProfile(liveProfiles[0] ?? null);
+      setStatus(liveProfiles.length > 0 ? 'Your private matches loaded' : 'No private matches for this wallet yet');
+    } catch (error) {
+      setProfiles([]);
+      setSelectedProfile(null);
+      setStatus(error instanceof Error ? error.message : 'Could not load private matches');
     }
   }
 
   async function runMatch() {
-    if (!selectedProfile || !account) {
-      setStatus('Connect wallet and choose a profile first');
+    if (!account) {
+      setStatus('Connect wallet first');
       return;
     }
+    const directAddress = partnerAddress.trim();
+    const otherAddress = selectedProfile?.address ?? (isAddress(directAddress) ? (getAddress(directAddress) as `0x${string}`) : null);
+    if (!otherAddress) {
+      setStatus('Choose a private match or paste a partner wallet');
+      return;
+    }
+    if (otherAddress.toLowerCase() === account.toLowerCase()) {
+      setStatus('Use a different wallet for matching');
+      return;
+    }
+
     setIsBusy(true);
     setMatch(null);
     try {
-      const score = await computeAndDecryptMatch(selectedProfile.address, account, setStatus);
+      const partnerProfile = selectedProfile?.address.toLowerCase() === otherAddress.toLowerCase()
+        ? selectedProfile
+        : await fetchProfileByAddress(otherAddress);
+      if (!partnerProfile?.hasChart) {
+        throw new Error('That wallet has no sealed profile yet');
+      }
+      setSelectedProfile(partnerProfile);
+      const score = await computeAndDecryptMatch(partnerProfile.address, account, setStatus);
       setMatch({ score, tier: getTier(score), badges: getBadges(score) });
       setStatus(score >= 70 ? 'Match revealed' : 'Private score below reveal threshold');
+      await refreshProfiles(account);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'Private synastry failed');
     } finally {
@@ -164,10 +201,12 @@ export function App() {
           account={account}
           profiles={profiles}
           selected={selectedProfile}
+          partnerAddress={partnerAddress}
           isBusy={isBusy}
           status={status}
           hasContract={hasContract}
           onRefresh={refreshProfiles}
+          onPartnerAddressChange={setPartnerAddress}
           onSelect={setSelectedProfile}
           onRunMatch={runMatch}
         />
@@ -175,7 +214,7 @@ export function App() {
         <ShareCardPanel
           cardRef={cardRef}
           self={profile}
-          other={selectedProfile}
+          other={selectedProfile ?? demoProfiles[0]}
           match={match}
           onExport={exportCard}
         />
@@ -300,23 +339,29 @@ function MatchPanel({
   account,
   profiles,
   selected,
+  partnerAddress,
   isBusy,
   status,
   hasContract,
   onRefresh,
+  onPartnerAddressChange,
   onSelect,
   onRunMatch,
 }: {
   account: `0x${string}` | null;
   profiles: PublicProfile[];
-  selected: PublicProfile;
+  selected: PublicProfile | null;
+  partnerAddress: string;
   isBusy: boolean;
   status: string;
   hasContract: boolean;
   onRefresh: () => void;
-  onSelect: (profile: PublicProfile) => void;
+  onPartnerAddressChange: (address: string) => void;
+  onSelect: (profile: PublicProfile | null) => void;
   onRunMatch: () => void;
 }) {
+  const showDemo = !account;
+
   return (
     <section className="panel match-panel">
       <div className="panel-title">
@@ -327,12 +372,33 @@ function MatchPanel({
         <span className={hasContract ? 'live-dot' : 'warn-dot'} />
         {status}
       </div>
+      {account && (
+        <label className="partner-address">
+          Partner wallet
+          <input
+            value={partnerAddress}
+            onChange={(event) => {
+              onPartnerAddressChange(event.target.value);
+              onSelect(null);
+            }}
+            placeholder="0x..."
+          />
+        </label>
+      )}
       <div className="profile-list">
+        {profiles.length === 0 && (
+          <div className="empty-private-list">
+            {showDemo ? 'Demo cards only. Connect to load your private match list.' : 'No private matches found for this wallet yet.'}
+          </div>
+        )}
         {profiles.map((publicProfile) => (
           <button
             className={`profile-card ${selected?.address === publicProfile.address ? 'selected' : ''}`}
             key={publicProfile.address}
-            onClick={() => onSelect(publicProfile)}
+            onClick={() => {
+              onPartnerAddressChange(publicProfile.address);
+              onSelect(publicProfile);
+            }}
           >
             <span className="avatar" style={{ background: publicProfile.avatarColor }} />
             <span>
@@ -353,6 +419,9 @@ function MatchPanel({
           Run match
         </button>
       </div>
+      {!account && (
+        <p className="helper-copy">Only sample cards are shown publicly. Wallet-specific matches load after connection.</p>
+      )}
       {!hasContract && (
         <p className="helper-copy">
           Add the deployed contract address as <code>VITE_HOROSCOPE_MATCHER_ADDRESS</code> to switch from demo cards to
