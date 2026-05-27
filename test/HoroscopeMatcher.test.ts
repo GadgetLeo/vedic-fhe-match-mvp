@@ -55,6 +55,7 @@ describe('HoroscopeMatcher', () => {
     const profile = await matcher.profiles(alice.address);
     expect(profile.displayName).to.equal('Anika');
     expect(profile.xHandle).to.equal('@anika_fhe');
+    expect(profile.version).to.equal(1n);
     expect(await matcher.hasEncryptedChart(alice.address)).to.equal(true);
     expect(await matcher.memberCount()).to.equal(1n);
   });
@@ -71,6 +72,7 @@ describe('HoroscopeMatcher', () => {
     expect(profile.displayName).to.equal('Anika Rao');
     expect(profile.xHandle).to.equal('@anika_sealed');
     expect(profile.avatarColor).to.equal('#38d5ff');
+    expect(profile.version).to.equal(2n);
     expect(await matcher.memberCount()).to.equal(1n);
     expect(await matcher.members(0)).to.equal(alice.address);
   });
@@ -83,6 +85,8 @@ describe('HoroscopeMatcher', () => {
     await (await matcher.connect(alice).saveProfile('Anika', '@anika_fhe', '#1df8a4', aliceChart)).wait();
     await (await matcher.connect(bob).saveProfile('Riya', '@riyaverse', '#e8b84a', bobChart)).wait();
     await (await matcher.connect(alice).computeCompatibility(bob.address)).wait();
+    await (await matcher.connect(alice).requestReveal(bob.address)).wait();
+    await (await matcher.connect(bob).requestReveal(alice.address)).wait();
 
     const scoreHandle = await matcher.getScore(alice.address, bob.address);
     const score = await aliceClient.decryptForView(scoreHandle, FheTypes.Uint16).execute();
@@ -98,6 +102,8 @@ describe('HoroscopeMatcher', () => {
     await (await matcher.connect(alice).saveProfile('Anika', '@anika_fhe', '#1df8a4', aliceChart)).wait();
     await (await matcher.connect(bob).saveProfile('Riya', '@riyaverse', '#e8b84a', bobChart)).wait();
     await (await matcher.connect(alice).computeCompatibility(bob.address)).wait();
+    await (await matcher.connect(alice).requestReveal(bob.address)).wait();
+    await (await matcher.connect(bob).requestReveal(alice.address)).wait();
 
     const forwardHandle = await matcher.getScore(alice.address, bob.address);
     const reverseHandle = await matcher.getScore(bob.address, alice.address);
@@ -115,6 +121,8 @@ describe('HoroscopeMatcher', () => {
     await (await matcher.connect(alice).saveProfile('Anika', '@anika_fhe', '#1df8a4', aliceChart)).wait();
     await (await matcher.connect(cara).saveProfile('Dev', '@devcrypted', '#38d5ff', caraChart)).wait();
     await (await matcher.connect(alice).computeCompatibility(cara.address)).wait();
+    await (await matcher.connect(alice).requestReveal(cara.address)).wait();
+    await (await matcher.connect(cara).requestReveal(alice.address)).wait();
 
     const scoreHandle = await matcher.getScore(alice.address, cara.address);
     const score = await aliceClient.decryptForView(scoreHandle, FheTypes.Uint16).execute();
@@ -129,8 +137,8 @@ describe('HoroscopeMatcher', () => {
     await (await matcher.connect(alice).saveProfile('Anika', '@anika_fhe', '#1df8a4', aliceChart)).wait();
 
     await expect(matcher.connect(alice).computeCompatibility(alice.address)).to.be.revertedWith('SELF_MATCH');
-    await expect(matcher.connect(bob).computeCompatibility(alice.address)).to.be.revertedWith('SENDER_CHART_MISSING');
-    await expect(matcher.connect(alice).computeCompatibility(bob.address)).to.be.revertedWith('OTHER_CHART_MISSING');
+    await expect(matcher.connect(bob).computeCompatibility(alice.address)).to.be.revertedWith('USER_A_CHART_MISSING');
+    await expect(matcher.connect(alice).computeCompatibility(bob.address)).to.be.revertedWith('USER_B_CHART_MISSING');
   });
 
   it('masks public reveal results below the threshold and exposes high scores', async () => {
@@ -144,6 +152,10 @@ describe('HoroscopeMatcher', () => {
     await (await matcher.connect(cara).saveProfile('Dev', '@devcrypted', '#38d5ff', caraChart)).wait();
     await (await matcher.connect(alice).computeCompatibility(bob.address)).wait();
     await (await matcher.connect(alice).computeCompatibility(cara.address)).wait();
+    await (await matcher.connect(alice).requestReveal(bob.address)).wait();
+    await (await matcher.connect(bob).requestReveal(alice.address)).wait();
+    await (await matcher.connect(alice).requestReveal(cara.address)).wait();
+    await (await matcher.connect(cara).requestReveal(alice.address)).wait();
     await (await matcher.connect(alice).getPublicRevealScore(alice.address, bob.address)).wait();
     await (await matcher.connect(alice).getPublicRevealScore(alice.address, cara.address)).wait();
 
@@ -154,5 +166,77 @@ describe('HoroscopeMatcher', () => {
 
     expect(highReveal).to.equal(85n);
     expect(lowReveal).to.equal(0n);
+  });
+
+  it('allows a matcher worker to compute pairs without revealing the score first', async () => {
+    const matcher = await deployMatcher();
+    const aliceChart = await encryptedChart(aliceClient, highMatch);
+    const bobChart = await encryptedChart(bobClient, highMatch);
+
+    await (await matcher.connect(alice).saveProfile('Anika', '@anika_fhe', '#1df8a4', aliceChart)).wait();
+    await (await matcher.connect(bob).saveProfile('Riya', '@riyaverse', '#e8b84a', bobChart)).wait();
+    await (await matcher.connect(cara).computeCompatibilityFor(alice.address, bob.address)).wait();
+
+    const pair = await matcher.getPair(alice.address, bob.address);
+    expect(pair.computed).to.equal(true);
+    expect(pair.revealA).to.equal(false);
+    expect(pair.revealB).to.equal(false);
+    expect(await matcher.userPairCount(alice.address)).to.equal(1n);
+    expect(await matcher.userPairCount(bob.address)).to.equal(1n);
+
+    let decryptedBeforeReveal = true;
+    try {
+      await aliceClient.decryptForView(await matcher.getScore(alice.address, bob.address), FheTypes.Uint16).execute();
+    } catch {
+      decryptedBeforeReveal = false;
+    }
+    expect(decryptedBeforeReveal).to.equal(false);
+  });
+
+  it('requires both users to reveal before the score can decrypt and public reveal can expose it', async () => {
+    const matcher = await deployMatcher();
+    const aliceChart = await encryptedChart(aliceClient, highMatch);
+    const bobChart = await encryptedChart(bobClient, highMatch);
+
+    await (await matcher.connect(alice).saveProfile('Anika', '@anika_fhe', '#1df8a4', aliceChart)).wait();
+    await (await matcher.connect(bob).saveProfile('Riya', '@riyaverse', '#e8b84a', bobChart)).wait();
+    await (await matcher.connect(cara).computeCompatibilityFor(alice.address, bob.address)).wait();
+    await (await matcher.connect(alice).requestReveal(bob.address)).wait();
+    await (await matcher.connect(alice).getPublicRevealScore(alice.address, bob.address)).wait();
+
+    const hiddenHandle = await matcher.getPublicRevealScore.staticCall(alice.address, bob.address);
+    const hiddenReveal = await aliceClient.decryptForView(hiddenHandle, FheTypes.Uint16).execute();
+    expect(hiddenReveal).to.equal(0n);
+
+    await (await matcher.connect(bob).requestReveal(alice.address)).wait();
+    expect(await matcher.bothRevealed(alice.address, bob.address)).to.equal(true);
+
+    const scoreHandle = await matcher.getScore(alice.address, bob.address);
+    const score = await aliceClient.decryptForView(scoreHandle, FheTypes.Uint16).execute();
+    expect(score).to.equal(85n);
+  });
+
+  it('resets reveal consent when a profile version changes and the pair is recomputed', async () => {
+    const matcher = await deployMatcher();
+    const aliceChart = await encryptedChart(aliceClient, highMatch);
+    const bobChart = await encryptedChart(bobClient, highMatch);
+    const bobUpdatedChart = await encryptedChart(bobClient, lowMatch);
+
+    await (await matcher.connect(alice).saveProfile('Anika', '@anika_fhe', '#1df8a4', aliceChart)).wait();
+    await (await matcher.connect(bob).saveProfile('Riya', '@riyaverse', '#e8b84a', bobChart)).wait();
+    await (await matcher.connect(cara).computeCompatibilityFor(alice.address, bob.address)).wait();
+    await (await matcher.connect(alice).requestReveal(bob.address)).wait();
+    await (await matcher.connect(bob).requestReveal(alice.address)).wait();
+
+    await (await matcher.connect(bob).saveProfile('Riya V2', '@riyaverse', '#7585ff', bobUpdatedChart)).wait();
+    await (await matcher.connect(cara).computeCompatibilityFor(alice.address, bob.address)).wait();
+
+    const pair = await matcher.getPair(alice.address, bob.address);
+    expect(pair.computed).to.equal(true);
+    expect(pair.revealA).to.equal(false);
+    expect(pair.revealB).to.equal(false);
+    const bobStoredVersion = pair.userA === bob.address ? pair.profileVersionA : pair.profileVersionB;
+    expect(bobStoredVersion).to.equal(2n);
+    expect(await matcher.userPairCount(alice.address)).to.equal(1n);
   });
 });

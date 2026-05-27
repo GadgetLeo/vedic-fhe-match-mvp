@@ -46,6 +46,14 @@ npx hardhat run scripts/deploy.ts --network baseSepolia
 
 Then set `VITE_HOROSCOPE_MATCHER_ADDRESS` to the deployed address and restart the dev server.
 
+Run the automatic matcher worker after profiles exist:
+
+```bash
+MATCHER_PRIVATE_KEY=0x... npm run match
+```
+
+The matcher scans saved members, skips already-computed pairs, and submits `computeCompatibilityFor(userA,userB)` for sealed profiles.
+
 For a production preview:
 
 ```bash
@@ -60,6 +68,17 @@ npm run preview
 - Encrypted inputs are produced with `encryptInputs([...]).execute()`.
 - Authorized score viewing uses `decryptForView(...)`.
 - Contract grants ACL permissions with `FHE.allowThis`, `FHE.allowSender`, and score-specific `FHE.allow(...)`.
+
+## Match / Reveal Flow
+
+- The frontend no longer shows a real match card while the user is typing.
+- `saveProfile` emits a profile update and puts the wallet into the match pool.
+- The matcher worker computes encrypted pair scores automatically.
+- Connected wallets only load pair records involving their own address.
+- A score remains locked until both wallets call `requestReveal`.
+- The share card and counterpart identity are shown only after mutual reveal in the UI.
+
+Note: V2 still stores public profile metadata on-chain for compatibility with the MVP contract shape. The UI gates identity display, but true metadata secrecy would require encrypted/off-chain profile metadata.
 
 ## Brand Direction
 

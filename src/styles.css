@@ -387,11 +387,22 @@ input[type="color"] {
   background: rgba(10, 217, 220, 0.08);
 }
 
+.demo-card {
+  cursor: default;
+  opacity: 0.8;
+}
+
 .profile-card .avatar {
   width: 42px;
   height: 42px;
   border-radius: 8px;
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.25);
+}
+
+.profile-card .locked-avatar {
+  background:
+    linear-gradient(135deg, rgba(10, 217, 220, 0.34), rgba(117, 133, 255, 0.26)),
+    repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.14) 0 2px, transparent 2px 7px);
 }
 
 .profile-card strong,

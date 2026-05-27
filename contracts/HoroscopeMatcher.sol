@@ -11,6 +11,7 @@ contract HoroscopeMatcher {
         string xHandle;
         string avatarColor;
         uint64 createdAt;
+        uint64 version;
         bool exists;
     }
 
@@ -43,14 +44,29 @@ contract HoroscopeMatcher {
         bool exists;
     }
 
+    struct PairRecord {
+        address userA;
+        address userB;
+        uint64 computedAt;
+        uint64 profileVersionA;
+        uint64 profileVersionB;
+        bool computed;
+        bool revealA;
+        bool revealB;
+    }
+
     mapping(address => Profile) public profiles;
     mapping(address => Chart) private charts;
     mapping(bytes32 => euint16) private scores;
+    mapping(bytes32 => PairRecord) public pairs;
+    mapping(address => bytes32[]) private userPairKeys;
     address[] public members;
 
-    event ProfileSaved(address indexed user, string displayName, string xHandle);
+    event ProfileSaved(address indexed user, string displayName, string xHandle, uint64 version);
     event ChartEncrypted(address indexed user);
     event CompatibilityComputed(address indexed userA, address indexed userB, euint16 scoreHandle);
+    event RevealRequested(address indexed user, address indexed other);
+    event RevealReady(address indexed userA, address indexed userB);
 
     function saveProfile(
         string calldata displayName,
@@ -58,7 +74,10 @@ contract HoroscopeMatcher {
         string calldata avatarColor,
         ChartInput calldata encryptedChart
     ) external {
-        if (!profiles[msg.sender].exists) {
+        bool isNewProfile = !profiles[msg.sender].exists;
+        uint64 nextVersion = profiles[msg.sender].version + 1;
+
+        if (isNewProfile) {
             members.push(msg.sender);
         }
 
@@ -67,6 +86,7 @@ contract HoroscopeMatcher {
             xHandle: xHandle,
             avatarColor: avatarColor,
             createdAt: uint64(block.timestamp),
+            version: nextVersion,
             exists: true
         });
 
@@ -86,7 +106,7 @@ contract HoroscopeMatcher {
 
         _allowChart(msg.sender);
 
-        emit ProfileSaved(msg.sender, displayName, xHandle);
+        emit ProfileSaved(msg.sender, displayName, xHandle, nextVersion);
         emit ChartEncrypted(msg.sender);
     }
 
@@ -99,33 +119,107 @@ contract HoroscopeMatcher {
     }
 
     function computeCompatibility(address other) external returns (euint16) {
-        require(msg.sender != other, "SELF_MATCH");
-        require(charts[msg.sender].exists, "SENDER_CHART_MISSING");
-        require(charts[other].exists, "OTHER_CHART_MISSING");
+        return _computeCompatibility(msg.sender, other);
+    }
 
-        euint16 score = _score(charts[msg.sender], charts[other]);
-        bytes32 key = _pairKey(msg.sender, other);
-        scores[key] = score;
-
-        FHE.allowThis(scores[key]);
-        FHE.allow(scores[key], msg.sender);
-        FHE.allow(scores[key], other);
-
-        emit CompatibilityComputed(msg.sender, other, score);
-        return score;
+    function computeCompatibilityFor(address userA, address userB) external returns (euint16) {
+        return _computeCompatibility(userA, userB);
     }
 
     function getScore(address userA, address userB) external view returns (euint16) {
         return scores[_pairKey(userA, userB)];
     }
 
+    function userPairCount(address user) external view returns (uint256) {
+        return userPairKeys[user].length;
+    }
+
+    function userPairKeyAt(address user, uint256 index) external view returns (bytes32) {
+        return userPairKeys[user][index];
+    }
+
+    function getPair(address userA, address userB) external view returns (PairRecord memory) {
+        return pairs[_pairKey(userA, userB)];
+    }
+
+    function getPairByKey(bytes32 key) external view returns (PairRecord memory) {
+        return pairs[key];
+    }
+
+    function requestReveal(address other) external {
+        bytes32 key = _pairKey(msg.sender, other);
+        PairRecord storage pair = pairs[key];
+        require(pair.computed, "PAIR_NOT_COMPUTED");
+        require(msg.sender == pair.userA || msg.sender == pair.userB, "NOT_PAIR_MEMBER");
+
+        if (msg.sender == pair.userA) {
+            pair.revealA = true;
+        } else {
+            pair.revealB = true;
+        }
+
+        emit RevealRequested(msg.sender, other);
+
+        if (pair.revealA && pair.revealB) {
+            FHE.allow(scores[key], pair.userA);
+            FHE.allow(scores[key], pair.userB);
+            emit RevealReady(pair.userA, pair.userB);
+        }
+    }
+
+    function bothRevealed(address userA, address userB) public view returns (bool) {
+        PairRecord storage pair = pairs[_pairKey(userA, userB)];
+        return pair.computed && pair.revealA && pair.revealB;
+    }
+
     function getPublicRevealScore(address userA, address userB) external returns (euint16) {
+        if (!bothRevealed(userA, userB)) {
+            euint16 hidden = FHE.asEuint16(0);
+            FHE.allowPublic(hidden);
+            FHE.allowThis(hidden);
+            return hidden;
+        }
+
         euint16 score = scores[_pairKey(userA, userB)];
         ebool canReveal = FHE.gte(score, FHE.asEuint16(REVEAL_THRESHOLD));
         euint16 revealed = FHE.select(canReveal, score, FHE.asEuint16(0));
         FHE.allowPublic(revealed);
         FHE.allowThis(revealed);
         return revealed;
+    }
+
+    function _computeCompatibility(address userA, address userB) private returns (euint16) {
+        require(userA != userB, "SELF_MATCH");
+        require(charts[userA].exists, "USER_A_CHART_MISSING");
+        require(charts[userB].exists, "USER_B_CHART_MISSING");
+
+        bytes32 key = _pairKey(userA, userB);
+        PairRecord storage pair = pairs[key];
+        bool isNewPair = !pair.computed;
+        euint16 score = _score(charts[userA], charts[userB]);
+        (address orderedA, address orderedB) = _orderedPair(userA, userB);
+
+        scores[key] = score;
+        pairs[key] = PairRecord({
+            userA: orderedA,
+            userB: orderedB,
+            computedAt: uint64(block.timestamp),
+            profileVersionA: profiles[orderedA].version,
+            profileVersionB: profiles[orderedB].version,
+            computed: true,
+            revealA: false,
+            revealB: false
+        });
+
+        FHE.allowThis(scores[key]);
+
+        if (isNewPair) {
+            userPairKeys[orderedA].push(key);
+            userPairKeys[orderedB].push(key);
+        }
+
+        emit CompatibilityComputed(orderedA, orderedB, score);
+        return score;
     }
 
     function _score(Chart storage a, Chart storage b) private returns (euint16) {
@@ -178,8 +272,11 @@ contract HoroscopeMatcher {
     }
 
     function _pairKey(address userA, address userB) private pure returns (bytes32) {
-        return userA < userB
-            ? keccak256(abi.encodePacked(userA, userB))
-            : keccak256(abi.encodePacked(userB, userA));
+        (address orderedA, address orderedB) = _orderedPair(userA, userB);
+        return keccak256(abi.encodePacked(orderedA, orderedB));
+    }
+
+    function _orderedPair(address userA, address userB) private pure returns (address, address) {
+        return userA < userB ? (userA, userB) : (userB, userA);
     }
 }

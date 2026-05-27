@@ -31,8 +31,26 @@ export type PublicProfile = {
   xHandle: string;
   avatarColor: string;
   createdAt: bigint;
+  version?: bigint;
   exists: boolean;
   hasChart: boolean;
+};
+
+export type MatchRecord = {
+  key: `0x${string}`;
+  userA: `0x${string}`;
+  userB: `0x${string}`;
+  other: `0x${string}`;
+  computedAt: bigint;
+  profileVersionA: bigint;
+  profileVersionB: bigint;
+  computed: boolean;
+  revealA: boolean;
+  revealB: boolean;
+  youRevealed: boolean;
+  otherRevealed: boolean;
+  bothRevealed: boolean;
+  profile?: PublicProfile;
 };
 
 export type MatchTier = 'No Reveal' | 'Strong Match' | 'Rare Match' | 'Cosmic Match';

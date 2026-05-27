@@ -1,17 +1,15 @@
-import { createPublicClient, createWalletClient, custom, http, getAddress, parseAbiItem } from 'viem';
+import { createPublicClient, createWalletClient, custom, http, getAddress } from 'viem';
 import { baseSepolia } from 'viem/chains';
 import { createCofheClient, createCofheConfig } from '@cofhe/sdk/web';
 import { Encryptable, FheTypes } from '@cofhe/sdk';
 import { getChainById } from '@cofhe/sdk/chains';
-import { ChartFeatures, ProfileForm, PublicProfile } from './types';
+import { ChartFeatures, MatchRecord, ProfileForm, PublicProfile } from './types';
 
 export const CONTRACT_ADDRESS = (import.meta.env.VITE_HOROSCOPE_MATCHER_ADDRESS || '') as `0x${string}`;
 export const BASE_SEPOLIA_CHAIN_ID = 84532;
 const SAVE_PROFILE_GAS_LIMIT = 2_500_000n;
 const COMPUTE_MATCH_GAS_LIMIT = 3_000_000n;
-const compatibilityComputedEvent = parseAbiItem(
-  'event CompatibilityComputed(address indexed userA, address indexed userB, uint256 scoreHandle)',
-);
+const REVEAL_GAS_LIMIT = 900_000n;
 
 const encryptedInputComponents = [
   { name: 'ctHash', type: 'uint256' },
@@ -76,6 +74,7 @@ export const horoscopeAbi = [
       { name: 'xHandle', type: 'string' },
       { name: 'avatarColor', type: 'string' },
       { name: 'createdAt', type: 'uint64' },
+      { name: 'version', type: 'uint64' },
       { name: 'exists', type: 'bool' },
     ],
   },
@@ -99,6 +98,82 @@ export const horoscopeAbi = [
     stateMutability: 'view',
     inputs: [],
     outputs: [{ name: '', type: 'uint256' }],
+  },
+  {
+    type: 'function',
+    name: 'computeCompatibilityFor',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'userA', type: 'address' },
+      { name: 'userB', type: 'address' },
+    ],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+  {
+    type: 'function',
+    name: 'requestReveal',
+    stateMutability: 'nonpayable',
+    inputs: [{ name: 'other', type: 'address' }],
+    outputs: [],
+  },
+  {
+    type: 'function',
+    name: 'getPublicRevealScore',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'userA', type: 'address' },
+      { name: 'userB', type: 'address' },
+    ],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+  {
+    type: 'function',
+    name: 'bothRevealed',
+    stateMutability: 'view',
+    inputs: [
+      { name: 'userA', type: 'address' },
+      { name: 'userB', type: 'address' },
+    ],
+    outputs: [{ name: '', type: 'bool' }],
+  },
+  {
+    type: 'function',
+    name: 'userPairCount',
+    stateMutability: 'view',
+    inputs: [{ name: 'user', type: 'address' }],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+  {
+    type: 'function',
+    name: 'userPairKeyAt',
+    stateMutability: 'view',
+    inputs: [
+      { name: 'user', type: 'address' },
+      { name: 'index', type: 'uint256' },
+    ],
+    outputs: [{ name: '', type: 'bytes32' }],
+  },
+  {
+    type: 'function',
+    name: 'getPairByKey',
+    stateMutability: 'view',
+    inputs: [{ name: 'key', type: 'bytes32' }],
+    outputs: [
+      {
+        name: '',
+        type: 'tuple',
+        components: [
+          { name: 'userA', type: 'address' },
+          { name: 'userB', type: 'address' },
+          { name: 'computedAt', type: 'uint64' },
+          { name: 'profileVersionA', type: 'uint64' },
+          { name: 'profileVersionB', type: 'uint64' },
+          { name: 'computed', type: 'bool' },
+          { name: 'revealA', type: 'bool' },
+          { name: 'revealB', type: 'bool' },
+        ],
+      },
+    ],
   },
 ] as const;
 
@@ -264,7 +339,8 @@ export async function fetchProfiles(): Promise<PublicProfile[]> {
         xHandle: profile[1],
         avatarColor: profile[2],
         createdAt: profile[3],
-        exists: profile[4],
+        version: profile[4],
+        exists: profile[5],
         hasChart,
       };
     }),
@@ -284,7 +360,7 @@ export async function fetchProfileByAddress(address: `0x${string}`): Promise<Pub
     args: [address],
   });
 
-  if (!profile[4]) return null;
+  if (!profile[5]) return null;
 
   const hasChart = await publicClient.readContract({
     address: CONTRACT_ADDRESS,
@@ -299,45 +375,65 @@ export async function fetchProfileByAddress(address: `0x${string}`): Promise<Pub
     xHandle: profile[1],
     avatarColor: profile[2],
     createdAt: profile[3],
-    exists: profile[4],
+    version: profile[4],
+    exists: profile[5],
     hasChart,
   };
 }
 
-export async function fetchMatchedProfilesForWallet(account: `0x${string}`): Promise<PublicProfile[]> {
+export async function fetchMatchRecordsForWallet(account: `0x${string}`): Promise<MatchRecord[]> {
   if (!CONTRACT_ADDRESS) return [];
 
   const publicClient = getPublicClient();
   const normalizedAccount = getAddress(account);
-  const [asUserA, asUserB] = await Promise.all([
-    publicClient.getLogs({
+  const count = await publicClient.readContract({
       address: CONTRACT_ADDRESS,
-      event: compatibilityComputedEvent,
-      args: { userA: normalizedAccount },
-      fromBlock: 0n,
-      toBlock: 'latest',
-    }),
-    publicClient.getLogs({
-      address: CONTRACT_ADDRESS,
-      event: compatibilityComputedEvent,
-      args: { userB: normalizedAccount },
-      fromBlock: 0n,
-      toBlock: 'latest',
-    }),
-  ]);
+      abi: horoscopeAbi,
+      functionName: 'userPairCount',
+      args: [normalizedAccount],
+  });
 
-  const counterparties = new Map<string, `0x${string}`>();
-  for (const log of [...asUserA, ...asUserB]) {
-    const userA = log.args.userA ? getAddress(log.args.userA) : null;
-    const userB = log.args.userB ? getAddress(log.args.userB) : null;
-    const other = userA?.toLowerCase() === normalizedAccount.toLowerCase() ? userB : userA;
-    if (other && other.toLowerCase() !== normalizedAccount.toLowerCase()) {
-      counterparties.set(other.toLowerCase(), other as `0x${string}`);
-    }
-  }
+  const records = await Promise.all(
+    Array.from({ length: Number(count) }).map(async (_, index) => {
+      const key = await publicClient.readContract({
+        address: CONTRACT_ADDRESS,
+        abi: horoscopeAbi,
+        functionName: 'userPairKeyAt',
+        args: [normalizedAccount, BigInt(index)],
+      });
+      const pair = await publicClient.readContract({
+        address: CONTRACT_ADDRESS,
+        abi: horoscopeAbi,
+        functionName: 'getPairByKey',
+        args: [key],
+      });
+      const userA = getAddress(pair.userA);
+      const userB = getAddress(pair.userB);
+      const isA = userA.toLowerCase() === normalizedAccount.toLowerCase();
+      const other = (isA ? userB : userA) as `0x${string}`;
+      const bothRevealed = pair.revealA && pair.revealB;
+      const profile = bothRevealed ? await fetchProfileByAddress(other) : undefined;
 
-  const profiles = await Promise.all([...counterparties.values()].map((address) => fetchProfileByAddress(address)));
-  return profiles.filter((profile): profile is PublicProfile => Boolean(profile?.exists));
+      return {
+        key,
+        userA,
+        userB,
+        other,
+        computedAt: pair.computedAt,
+        profileVersionA: pair.profileVersionA,
+        profileVersionB: pair.profileVersionB,
+        computed: pair.computed,
+        revealA: pair.revealA,
+        revealB: pair.revealB,
+        youRevealed: isA ? pair.revealA : pair.revealB,
+        otherRevealed: isA ? pair.revealB : pair.revealA,
+        bothRevealed,
+        profile: profile ?? undefined,
+      };
+    }),
+  );
+
+  return records.filter((record) => record.computed);
 }
 
 export async function computeAndDecryptMatch(other: `0x${string}`, self: `0x${string}`, onStep: (label: string) => void) {
@@ -372,6 +468,60 @@ export async function computeAndDecryptMatch(other: `0x${string}`, self: `0x${st
   });
 
   onStep('Decrypting authorized score');
+  const score = await cofheClient.decryptForView(scoreHandle, FheTypes.Uint16).withPermit(permit).execute();
+  return Number(score);
+}
+
+export async function requestMatchReveal(other: `0x${string}`, onStep: (label: string) => void) {
+  if (!CONTRACT_ADDRESS) {
+    throw new Error('Contract address missing. Set VITE_HOROSCOPE_MATCHER_ADDRESS after deployment.');
+  }
+
+  const publicClient = getPublicClient();
+  const walletClient = await getWalletClient();
+
+  onStep('Requesting reveal consent');
+  const hash = await walletClient.writeContract({
+    address: CONTRACT_ADDRESS,
+    abi: horoscopeAbi,
+    functionName: 'requestReveal',
+    args: [other],
+    gas: REVEAL_GAS_LIMIT,
+  });
+  await publicClient.waitForTransactionReceipt({ hash });
+  return hash;
+}
+
+export async function decryptRevealedMatch(other: `0x${string}`, self: `0x${string}`, onStep: (label: string) => void) {
+  if (!CONTRACT_ADDRESS) {
+    throw new Error('Contract address missing. Set VITE_HOROSCOPE_MATCHER_ADDRESS after deployment.');
+  }
+
+  const publicClient = getPublicClient();
+  const walletClient = await getWalletClient();
+  const cofheClient = createCofheClient(getCofheConfigForBaseSepolia());
+
+  onStep('Connecting reveal permit');
+  await cofheClient.connect(publicClient as never, walletClient as never);
+  const permit = await cofheClient.permits.getOrCreateSelfPermit();
+
+  const ready = await publicClient.readContract({
+    address: CONTRACT_ADDRESS,
+    abi: horoscopeAbi,
+    functionName: 'bothRevealed',
+    args: [self, other],
+  });
+  if (!ready) {
+    throw new Error('Waiting for the other person to reveal');
+  }
+
+  onStep('Decrypting revealed score');
+  const scoreHandle = await publicClient.readContract({
+    address: CONTRACT_ADDRESS,
+    abi: horoscopeAbi,
+    functionName: 'getScore',
+    args: [self, other],
+  });
   const score = await cofheClient.decryptForView(scoreHandle, FheTypes.Uint16).withPermit(permit).execute();
   return Number(score);
 }

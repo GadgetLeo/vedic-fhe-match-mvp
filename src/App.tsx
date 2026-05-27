@@ -1,17 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Download, LockKeyhole, RefreshCw, Search, ShieldCheck, Sparkles, Wallet } from 'lucide-react';
 import { toPng } from 'html-to-image';
-import { getAddress, isAddress } from 'viem';
 import {
   connectWallet,
-  computeAndDecryptMatch,
   CONTRACT_ADDRESS,
+  decryptRevealedMatch,
   encryptAndSaveProfile,
-  fetchMatchedProfilesForWallet,
-  fetchProfileByAddress,
+  fetchMatchRecordsForWallet,
+  requestMatchReveal,
 } from './contract';
 import { deriveChartFeatures, getBadges, getTier, nakshatraNames, signNames } from './chart';
-import { BirthForm, MatchResult, ProfileForm, PublicProfile } from './types';
+import { BirthForm, MatchRecord, MatchResult, ProfileForm, PublicProfile } from './types';
 
 const initialProfile: ProfileForm = {
   displayName: 'Anika',
@@ -51,9 +50,8 @@ export function App() {
   const [account, setAccount] = useState<`0x${string}` | null>(null);
   const [profile, setProfile] = useState(initialProfile);
   const [birth, setBirth] = useState(initialBirth);
-  const [profiles, setProfiles] = useState<PublicProfile[]>(demoProfiles);
-  const [selectedProfile, setSelectedProfile] = useState<PublicProfile | null>(demoProfiles[0]);
-  const [partnerAddress, setPartnerAddress] = useState('');
+  const [matches, setMatches] = useState<MatchRecord[]>([]);
+  const [selectedMatch, setSelectedMatch] = useState<MatchRecord | null>(null);
   const [status, setStatus] = useState('Ready to seal your chart');
   const [isBusy, setIsBusy] = useState(false);
   const [match, setMatch] = useState<MatchResult | null>(null);
@@ -64,8 +62,9 @@ export function App() {
 
   useEffect(() => {
     if (!account) {
-      setProfiles(demoProfiles);
-      setSelectedProfile(demoProfiles[0]);
+      setMatches([]);
+      setSelectedMatch(null);
+      setMatch(null);
       setStatus('Demo matches visible until a wallet connects');
     }
   }, [account]);
@@ -77,7 +76,7 @@ export function App() {
       const address = await connectWallet();
       setAccount(address);
       setStatus('Wallet connected on Base Sepolia');
-      await refreshProfiles(address);
+      await refreshMatches(address);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'Wallet connection failed');
     } finally {
@@ -90,8 +89,8 @@ export function App() {
     setMatch(null);
     try {
       await encryptAndSaveProfile(profile, chart, setStatus);
-      setStatus('Encrypted chart stored');
-      await refreshProfiles(account);
+      setStatus('Encrypted chart stored. Automatic matching can now scan your profile.');
+      await refreshMatches(account);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'Encrypted profile failed');
     } finally {
@@ -99,59 +98,43 @@ export function App() {
     }
   }
 
-  async function refreshProfiles(viewer: `0x${string}` | null = account) {
+  async function refreshMatches(viewer: `0x${string}` | null = account) {
     if (!viewer) {
-      setProfiles(demoProfiles);
-      setSelectedProfile(demoProfiles[0]);
+      setMatches([]);
+      setSelectedMatch(null);
       setStatus('Demo matches visible until a wallet connects');
       return;
     }
 
-    setStatus('Refreshing your private match list');
+    setStatus('Checking your private match queue');
     try {
-      const liveProfiles = await fetchMatchedProfilesForWallet(viewer);
-      setProfiles(liveProfiles);
-      setSelectedProfile(liveProfiles[0] ?? null);
-      setStatus(liveProfiles.length > 0 ? 'Your private matches loaded' : 'No private matches for this wallet yet');
+      const nextMatches = await fetchMatchRecordsForWallet(viewer);
+      setMatches(nextMatches);
+      setSelectedMatch((current) => {
+        const refreshed = current ? nextMatches.find((item) => item.key === current.key) : null;
+        return refreshed ?? nextMatches[0] ?? null;
+      });
+      setStatus(nextMatches.length > 0 ? 'Encrypted match found' : 'Scanning for compatible sealed profiles');
     } catch (error) {
-      setProfiles([]);
-      setSelectedProfile(null);
+      setMatches([]);
+      setSelectedMatch(null);
       setStatus(error instanceof Error ? error.message : 'Could not load private matches');
     }
   }
 
-  async function runMatch() {
-    if (!account) {
-      setStatus('Connect wallet first');
-      return;
-    }
-    const directAddress = partnerAddress.trim();
-    const otherAddress = selectedProfile?.address ?? (isAddress(directAddress) ? (getAddress(directAddress) as `0x${string}`) : null);
-    if (!otherAddress) {
-      setStatus('Choose a private match or paste a partner wallet');
-      return;
-    }
-    if (otherAddress.toLowerCase() === account.toLowerCase()) {
-      setStatus('Use a different wallet for matching');
-      return;
-    }
-
+  async function revealMatch() {
+    if (!account || !selectedMatch) return;
     setIsBusy(true);
     setMatch(null);
     try {
-      const partnerProfile = selectedProfile?.address.toLowerCase() === otherAddress.toLowerCase()
-        ? selectedProfile
-        : await fetchProfileByAddress(otherAddress);
-      if (!partnerProfile?.hasChart) {
-        throw new Error('That wallet has no sealed profile yet');
-      }
-      setSelectedProfile(partnerProfile);
-      const score = await computeAndDecryptMatch(partnerProfile.address, account, setStatus);
+      await requestMatchReveal(selectedMatch.other, setStatus);
+      await refreshMatches(account);
+      const score = await decryptRevealedMatch(selectedMatch.other, account, setStatus);
       setMatch({ score, tier: getTier(score), badges: getBadges(score) });
-      setStatus(score >= 70 ? 'Match revealed' : 'Private score below reveal threshold');
-      await refreshProfiles(account);
+      setStatus(score >= 70 ? 'Match card revealed' : 'Revealed score is below share threshold');
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : 'Private synastry failed');
+      await refreshMatches(account);
+      setStatus(error instanceof Error ? error.message : 'Reveal request failed');
     } finally {
       setIsBusy(false);
     }
@@ -199,22 +182,21 @@ export function App() {
 
         <MatchPanel
           account={account}
-          profiles={profiles}
-          selected={selectedProfile}
-          partnerAddress={partnerAddress}
+          matches={matches}
+          selected={selectedMatch}
           isBusy={isBusy}
           status={status}
           hasContract={hasContract}
-          onRefresh={refreshProfiles}
-          onPartnerAddressChange={setPartnerAddress}
-          onSelect={setSelectedProfile}
-          onRunMatch={runMatch}
+          onRefresh={refreshMatches}
+          onSelect={setSelectedMatch}
+          onReveal={revealMatch}
         />
 
         <ShareCardPanel
           cardRef={cardRef}
           self={profile}
-          other={selectedProfile ?? demoProfiles[0]}
+          other={selectedMatch?.profile ?? null}
+          selectedMatch={selectedMatch}
           match={match}
           onExport={exportCard}
         />
@@ -337,30 +319,31 @@ function ProfilePanel({
 
 function MatchPanel({
   account,
-  profiles,
+  matches,
   selected,
-  partnerAddress,
   isBusy,
   status,
   hasContract,
   onRefresh,
-  onPartnerAddressChange,
   onSelect,
-  onRunMatch,
+  onReveal,
 }: {
   account: `0x${string}` | null;
-  profiles: PublicProfile[];
-  selected: PublicProfile | null;
-  partnerAddress: string;
+  matches: MatchRecord[];
+  selected: MatchRecord | null;
   isBusy: boolean;
   status: string;
   hasContract: boolean;
   onRefresh: () => void;
-  onPartnerAddressChange: (address: string) => void;
-  onSelect: (profile: PublicProfile | null) => void;
-  onRunMatch: () => void;
+  onSelect: (match: MatchRecord | null) => void;
+  onReveal: () => void;
 }) {
   const showDemo = !account;
+  const revealLabel = selected?.bothRevealed
+    ? 'Open card'
+    : selected?.youRevealed
+      ? 'Waiting for them'
+      : 'Reveal match';
 
   return (
     <section className="panel match-panel">
@@ -372,40 +355,39 @@ function MatchPanel({
         <span className={hasContract ? 'live-dot' : 'warn-dot'} />
         {status}
       </div>
-      {account && (
-        <label className="partner-address">
-          Partner wallet
-          <input
-            value={partnerAddress}
-            onChange={(event) => {
-              onPartnerAddressChange(event.target.value);
-              onSelect(null);
-            }}
-            placeholder="0x..."
-          />
-        </label>
-      )}
       <div className="profile-list">
-        {profiles.length === 0 && (
+        {showDemo &&
+          demoProfiles.map((publicProfile) => (
+            <div className="profile-card demo-card" key={publicProfile.address}>
+              <span className="avatar" style={{ background: publicProfile.avatarColor }} />
+              <span>
+                <strong>{publicProfile.displayName}</strong>
+                <small>{publicProfile.xHandle}</small>
+              </span>
+              <em>demo</em>
+            </div>
+          ))}
+        {!showDemo && matches.length === 0 && (
           <div className="empty-private-list">
-            {showDemo ? 'Demo cards only. Connect to load your private match list.' : 'No private matches found for this wallet yet.'}
+            No encrypted matches yet. The matcher scans sealed profiles after you save yours.
           </div>
         )}
-        {profiles.map((publicProfile) => (
+        {!showDemo && matches.map((matchRecord, index) => (
           <button
-            className={`profile-card ${selected?.address === publicProfile.address ? 'selected' : ''}`}
-            key={publicProfile.address}
-            onClick={() => {
-              onPartnerAddressChange(publicProfile.address);
-              onSelect(publicProfile);
-            }}
+            className={`profile-card ${selected?.key === matchRecord.key ? 'selected' : ''}`}
+            key={matchRecord.key}
+            onClick={() => onSelect(matchRecord)}
           >
-            <span className="avatar" style={{ background: publicProfile.avatarColor }} />
+            <span className="avatar locked-avatar" />
             <span>
-              <strong>{publicProfile.displayName}</strong>
-              <small>{publicProfile.xHandle}</small>
+              <strong>{matchRecord.bothRevealed && matchRecord.profile ? matchRecord.profile.displayName : `Encrypted match ${index + 1}`}</strong>
+              <small>
+                {matchRecord.bothRevealed && matchRecord.profile
+                  ? matchRecord.profile.xHandle
+                  : `${matchRecord.other.slice(0, 6)}...${matchRecord.other.slice(-4)}`}
+              </small>
             </span>
-            <em>{publicProfile.hasChart ? 'sealed' : 'open'}</em>
+            <em>{matchRecord.bothRevealed ? 'revealed' : matchRecord.youRevealed ? 'pending' : 'locked'}</em>
           </button>
         ))}
       </div>
@@ -414,13 +396,13 @@ function MatchPanel({
           <RefreshCw size={17} />
           Refresh
         </button>
-        <button className="primary-action" disabled={isBusy || !account} onClick={onRunMatch}>
+        <button className="primary-action" disabled={isBusy || !account || !selected || (selected.youRevealed && !selected.bothRevealed)} onClick={onReveal}>
           <Sparkles size={18} />
-          Run match
+          {revealLabel}
         </button>
       </div>
       {!account && (
-        <p className="helper-copy">Only sample cards are shown publicly. Wallet-specific matches load after connection.</p>
+        <p className="helper-copy">Only sample cards are shown publicly. Your encrypted matches load after wallet connection.</p>
       )}
       {!hasContract && (
         <p className="helper-copy">
@@ -436,12 +418,14 @@ function ShareCardPanel({
   cardRef,
   self,
   other,
+  selectedMatch,
   match,
   onExport,
 }: {
   cardRef: React.RefObject<HTMLDivElement>;
   self: ProfileForm;
-  other: PublicProfile;
+  other: PublicProfile | null;
+  selectedMatch: MatchRecord | null;
   match: MatchResult | null;
   onExport: () => void;
 }) {
@@ -449,6 +433,8 @@ function ShareCardPanel({
   const visibleTier = match?.tier ?? 'No Match Yet';
   const visibleBadges = match?.badges ?? ['Encrypted', 'Pending Match'];
   const unlocked = Boolean(match && visibleScore >= 70);
+  const otherName = unlocked && other ? other.displayName : 'Locked match';
+  const otherHandle = unlocked && other ? other.xHandle : selectedMatch ? 'reveals after mutual consent' : 'waiting for match';
 
   return (
     <section className="panel share-panel">
@@ -465,13 +451,13 @@ function ShareCardPanel({
         </div>
         <div className="match-names">
           <span>
-            <strong>{self.displayName}</strong>
-            <small>{self.xHandle}</small>
+            <strong>{unlocked ? self.displayName : 'You'}</strong>
+            <small>{unlocked ? self.xHandle : 'sealed profile'}</small>
           </span>
           <span className="match-glyph">×</span>
           <span>
-            <strong>{other.displayName}</strong>
-            <small>{other.xHandle}</small>
+            <strong>{otherName}</strong>
+            <small>{otherHandle}</small>
           </span>
         </div>
         <div className="score-orb">
@@ -485,7 +471,7 @@ function ShareCardPanel({
         </div>
         <p>Birth charts encrypted with FHE. Only this match score was revealed.</p>
       </div>
-      <button className="primary-action" onClick={onExport}>
+      <button className="primary-action" disabled={!unlocked} onClick={onExport}>
         <Download size={18} />
         Export for X
       </button>
