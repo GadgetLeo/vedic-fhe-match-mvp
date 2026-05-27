@@ -1,0 +1,14 @@
+node_modules
+dist
+cache
+artifacts
+typechain-types
+.appdata
+.localappdata
+ms-playwright
+coverage
+*.log
+preview-*.png
+pnpm.tgz
+package
+.env
