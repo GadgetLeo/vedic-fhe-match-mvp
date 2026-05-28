@@ -4,7 +4,7 @@ pragma solidity ^0.8.28;
 import "@fhenixprotocol/cofhe-contracts/FHE.sol";
 
 contract HoroscopeMatcher {
-    uint16 public constant REVEAL_THRESHOLD = 70;
+    uint16 public constant REVEAL_THRESHOLD = 50;
 
     struct Profile {
         string displayName;
@@ -123,6 +123,25 @@ contract HoroscopeMatcher {
         return _computeCompatibility(userA, userB);
     }
 
+    function computeCompatibilityBatch(address user, address[] calldata candidates) external returns (uint256 computedCount) {
+        require(charts[user].exists, "USER_A_CHART_MISSING");
+
+        for (uint256 index = 0; index < candidates.length; index++) {
+            address candidate = candidates[index];
+            if (candidate == user || !charts[candidate].exists) {
+                continue;
+            }
+
+            bytes32 key = _pairKey(user, candidate);
+            if (_pairIsCurrent(key)) {
+                continue;
+            }
+
+            _computeCompatibility(user, candidate);
+            computedCount++;
+        }
+    }
+
     function getScore(address userA, address userB) external view returns (euint16) {
         return scores[_pairKey(userA, userB)];
     }
@@ -222,23 +241,35 @@ contract HoroscopeMatcher {
     function _score(Chart storage a, Chart storage b) private returns (euint16) {
         euint16 score = FHE.asEuint16(0);
 
-        score = FHE.add(score, _award(FHE.eq(a.moonSign, b.moonSign), 20));
-        score = FHE.add(score, _award(FHE.eq(a.nakshatra, b.nakshatra), 20));
-        score = FHE.add(score, _award(FHE.eq(a.ascSign, b.ascSign), 10));
+        score = FHE.add(score, _award(FHE.eq(a.moonSign, b.moonSign), 18));
+        score = FHE.add(score, _award(FHE.eq(a.nakshatra, b.nakshatra), 14));
+        score = FHE.add(score, _award(FHE.eq(a.ascSign, b.ascSign), 12));
+        score = FHE.add(score, _award(FHE.eq(a.sunSign, b.sunSign), 10));
         score = FHE.add(score, _award(FHE.eq(a.venusSign, b.marsSign), 8));
-        score = FHE.add(score, _award(FHE.eq(b.venusSign, a.marsSign), 7));
-        score = FHE.add(score, _award(FHE.eq(a.seventhHouseSign, b.ascSign), 8));
-        score = FHE.add(score, _award(FHE.eq(b.seventhHouseSign, a.ascSign), 7));
-        score = FHE.add(score, _award(FHE.eq(a.jupiterSign, b.jupiterSign), 5));
-        score = FHE.add(score, _award(FHE.eq(a.saturnSign, b.saturnSign), 5));
-        score = FHE.add(score, _award(FHE.eq(a.venusHouse, b.marsHouse), 5));
-        score = FHE.add(score, _award(FHE.eq(b.venusHouse, a.marsHouse), 5));
+        score = FHE.add(score, _award(FHE.eq(b.venusSign, a.marsSign), 8));
+        score = FHE.add(score, _award(FHE.eq(a.seventhHouseSign, b.ascSign), 6));
+        score = FHE.add(score, _award(FHE.eq(b.seventhHouseSign, a.ascSign), 6));
+        score = FHE.add(score, _award(FHE.eq(a.jupiterSign, b.jupiterSign), 6));
+        score = FHE.add(score, _award(FHE.eq(a.saturnSign, b.saturnSign), 6));
+        score = FHE.add(score, _award(FHE.eq(a.venusHouse, b.marsHouse), 6));
+        score = FHE.add(score, _award(FHE.eq(b.venusHouse, a.marsHouse), 6));
 
         return score;
     }
 
     function _award(ebool condition, uint16 points) private returns (euint16) {
         return FHE.select(condition, FHE.asEuint16(points), FHE.asEuint16(0));
+    }
+
+    function _pairIsCurrent(bytes32 key) private view returns (bool) {
+        PairRecord storage pair = pairs[key];
+        if (!pair.computed) {
+            return false;
+        }
+
+        return
+            pair.profileVersionA == profiles[pair.userA].version &&
+            pair.profileVersionB == profiles[pair.userB].version;
     }
 
     function _allowChart(address user) private {
