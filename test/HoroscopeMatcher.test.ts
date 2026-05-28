@@ -60,19 +60,21 @@ describe('HoroscopeMatcher', () => {
     expect(await matcher.memberCount()).to.equal(1n);
   });
 
-  it('updates an existing profile without duplicating the member list', async () => {
+  it('rejects a second profile for the same wallet', async () => {
     const matcher = await deployMatcher();
     const firstChart = await encryptedChart(aliceClient, highMatch);
     const updatedChart = await encryptedChart(aliceClient, lowMatch);
 
     await (await matcher.connect(alice).saveProfile('Anika', '@anika_fhe', '#1df8a4', firstChart)).wait();
-    await (await matcher.connect(alice).saveProfile('Anika Rao', '@anika_sealed', '#38d5ff', updatedChart)).wait();
+    await expect(
+      matcher.connect(alice).saveProfile('Anika Rao', '@anika_sealed', '#38d5ff', updatedChart),
+    ).to.be.revertedWith('PROFILE_ALREADY_EXISTS');
 
     const profile = await matcher.profiles(alice.address);
-    expect(profile.displayName).to.equal('Anika Rao');
-    expect(profile.xHandle).to.equal('@anika_sealed');
-    expect(profile.avatarColor).to.equal('#38d5ff');
-    expect(profile.version).to.equal(2n);
+    expect(profile.displayName).to.equal('Anika');
+    expect(profile.xHandle).to.equal('@anika_fhe');
+    expect(profile.avatarColor).to.equal('#1df8a4');
+    expect(profile.version).to.equal(1n);
     expect(await matcher.memberCount()).to.equal(1n);
     expect(await matcher.members(0)).to.equal(alice.address);
   });
@@ -216,11 +218,10 @@ describe('HoroscopeMatcher', () => {
     expect(score).to.equal(85n);
   });
 
-  it('resets reveal consent when a profile version changes and the pair is recomputed', async () => {
+  it('resets reveal consent when a pair is recomputed', async () => {
     const matcher = await deployMatcher();
     const aliceChart = await encryptedChart(aliceClient, highMatch);
     const bobChart = await encryptedChart(bobClient, highMatch);
-    const bobUpdatedChart = await encryptedChart(bobClient, lowMatch);
 
     await (await matcher.connect(alice).saveProfile('Anika', '@anika_fhe', '#1df8a4', aliceChart)).wait();
     await (await matcher.connect(bob).saveProfile('Riya', '@riyaverse', '#e8b84a', bobChart)).wait();
@@ -228,7 +229,6 @@ describe('HoroscopeMatcher', () => {
     await (await matcher.connect(alice).requestReveal(bob.address)).wait();
     await (await matcher.connect(bob).requestReveal(alice.address)).wait();
 
-    await (await matcher.connect(bob).saveProfile('Riya V2', '@riyaverse', '#7585ff', bobUpdatedChart)).wait();
     await (await matcher.connect(cara).computeCompatibilityFor(alice.address, bob.address)).wait();
 
     const pair = await matcher.getPair(alice.address, bob.address);
@@ -236,7 +236,7 @@ describe('HoroscopeMatcher', () => {
     expect(pair.revealA).to.equal(false);
     expect(pair.revealB).to.equal(false);
     const bobStoredVersion = pair.userA === bob.address ? pair.profileVersionA : pair.profileVersionB;
-    expect(bobStoredVersion).to.equal(2n);
+    expect(bobStoredVersion).to.equal(1n);
     expect(await matcher.userPairCount(alice.address)).to.equal(1n);
   });
 });
