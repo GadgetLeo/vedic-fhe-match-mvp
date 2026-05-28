@@ -167,7 +167,7 @@ export function App() {
       await refreshMatches(account, false);
       const score = await decryptRevealedMatch(selectedMatch.other, account, setStatus);
       setMatch({ score, tier: getTier(score), badges: getBadges(score) });
-      setStatus(score >= 70 ? 'Match card revealed' : 'Revealed score is below share threshold');
+      setStatus(score >= 50 ? 'Match card revealed' : 'Candidate did not clear the match threshold');
     } catch (error) {
       await refreshMatches(account, false);
       setStatus(error instanceof Error ? error.message : 'Reveal request failed');
@@ -200,7 +200,7 @@ export function App() {
         </div>
         <div className="cipher-panel" aria-label="Encrypted compute motif">
           <span>ctHash: 0x7f3a...9e11</span>
-          <span>FHE.select(score &gt;= 70)</span>
+          <span>FHE.select(score &gt;= 50)</span>
           <span>nakshatra.signal.locked</span>
         </div>
       </section>
@@ -464,14 +464,14 @@ function MatchPanel({
           >
             <span className="avatar locked-avatar" />
             <span>
-              <strong>{matchRecord.bothRevealed && matchRecord.profile ? matchRecord.profile.displayName : `Encrypted match ${index + 1}`}</strong>
+              <strong>{matchRecord.bothRevealed && matchRecord.profile ? matchRecord.profile.displayName : `Encrypted candidate ${index + 1}`}</strong>
               <small>
                 {matchRecord.bothRevealed && matchRecord.profile
                   ? matchRecord.profile.xHandle
                   : `${matchRecord.other.slice(0, 6)}...${matchRecord.other.slice(-4)}`}
               </small>
             </span>
-            <em>{matchRecord.bothRevealed ? 'revealed' : matchRecord.youRevealed ? 'pending' : 'locked'}</em>
+            <em>{matchRecord.bothRevealed ? 'revealed' : matchRecord.youRevealed ? 'pending' : 'candidate'}</em>
           </button>
         ))}
       </div>
@@ -514,11 +514,12 @@ function ShareCardPanel({
   onExport: () => void;
 }) {
   const visibleScore = match?.score ?? 0;
-  const visibleTier = match?.tier ?? 'No Match Yet';
+  const visibleTier = match ? (visibleScore >= 50 ? match.tier : 'Below Threshold') : 'No Match Yet';
   const visibleBadges = match?.badges ?? ['Encrypted', 'Pending Match'];
-  const unlocked = Boolean(match && visibleScore >= 70);
-  const otherName = unlocked && other ? other.displayName : 'Locked match';
-  const otherHandle = unlocked && other ? other.xHandle : selectedMatch ? 'reveals after mutual consent' : 'waiting for match';
+  const revealed = Boolean(match);
+  const shareable = revealed && visibleScore >= 50;
+  const otherName = revealed && other ? other.displayName : 'Locked candidate';
+  const otherHandle = revealed && other ? other.xHandle : selectedMatch ? 'reveals after mutual consent' : 'waiting for scan';
 
   return (
     <section className="panel share-panel">
@@ -526,7 +527,7 @@ function ShareCardPanel({
         <Sparkles size={18} />
         <h2>Share Card</h2>
       </div>
-      <div className={`share-card ${unlocked ? 'unlocked' : 'locked'}`} ref={cardRef}>
+      <div className={`share-card ${revealed ? 'unlocked' : 'locked'}`} ref={cardRef}>
         <div className="card-noise">ctHash::nakshatra::fhe.select::0xMATCH</div>
         <div className="vedic-ring" />
         <div className="card-header">
@@ -535,8 +536,8 @@ function ShareCardPanel({
         </div>
         <div className="match-names">
           <span>
-            <strong>{unlocked ? self.displayName : 'You'}</strong>
-            <small>{unlocked ? self.xHandle : 'sealed profile'}</small>
+            <strong>{revealed ? self.displayName : 'You'}</strong>
+            <small>{revealed ? self.xHandle : 'sealed profile'}</small>
           </span>
           <span className="match-glyph">×</span>
           <span>
@@ -545,17 +546,17 @@ function ShareCardPanel({
           </span>
         </div>
         <div className="score-orb">
-          <strong>{unlocked ? visibleScore : 0}%</strong>
-          <span>{unlocked ? visibleTier : 'No Reveal'}</span>
+          <strong>{revealed ? visibleScore : 0}%</strong>
+          <span>{revealed ? visibleTier : 'No Reveal'}</span>
         </div>
         <div className="badge-row">
           {visibleBadges.map((badge) => (
             <span key={badge}>{badge}</span>
           ))}
         </div>
-        <p>Birth charts encrypted with FHE. Only this match score was revealed.</p>
+        <p>Birth charts encrypted with FHE. Only this compatibility score was revealed.</p>
       </div>
-      <button className="primary-action" disabled={!unlocked} onClick={onExport}>
+      <button className="primary-action" disabled={!shareable} onClick={onExport}>
         <Download size={18} />
         Export for X
       </button>
