@@ -436,6 +436,47 @@ export async function fetchMatchRecordsForWallet(account: `0x${string}`): Promis
   return records.filter((record) => record.computed);
 }
 
+export async function scanAndComputeMatchesForWallet(account: `0x${string}`, onStep: (label: string) => void) {
+  if (!CONTRACT_ADDRESS) {
+    throw new Error('Contract address missing. Set VITE_HOROSCOPE_MATCHER_ADDRESS after deployment.');
+  }
+
+  const self = await fetchProfileByAddress(account);
+  if (!self?.hasChart) {
+    return 0;
+  }
+
+  const publicClient = getPublicClient();
+  const walletClient = await getWalletClient();
+  const existingMatches = await fetchMatchRecordsForWallet(account);
+  const existingAddresses = new Set(existingMatches.map((matchRecord) => matchRecord.other.toLowerCase()));
+  const profiles = await fetchProfiles();
+  const candidates = profiles.filter((profile) => {
+    const isSelf = profile.address.toLowerCase() === account.toLowerCase();
+    return !isSelf && profile.hasChart && !existingAddresses.has(profile.address.toLowerCase());
+  });
+
+  if (candidates.length === 0) {
+    return 0;
+  }
+
+  let submitted = 0;
+  for (const candidate of candidates) {
+    onStep(`Scanning encrypted profile ${submitted + 1} of ${candidates.length}`);
+    const hash = await walletClient.writeContract({
+      address: CONTRACT_ADDRESS,
+      abi: horoscopeAbi,
+      functionName: 'computeCompatibilityFor',
+      args: [account, candidate.address],
+      gas: COMPUTE_MATCH_GAS_LIMIT,
+    });
+    await publicClient.waitForTransactionReceipt({ hash });
+    submitted += 1;
+  }
+
+  return submitted;
+}
+
 export async function computeAndDecryptMatch(other: `0x${string}`, self: `0x${string}`, onStep: (label: string) => void) {
   if (!CONTRACT_ADDRESS) {
     throw new Error('Contract address missing. Set VITE_HOROSCOPE_MATCHER_ADDRESS after deployment.');
