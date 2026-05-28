@@ -13,7 +13,7 @@ const REVEAL_GAS_LIMIT = 900_000n;
 
 const encryptedInputComponents = [
   { name: 'ctHash', type: 'uint256' },
-  { name: 'securityZone', type: 'int32' },
+  { name: 'securityZone', type: 'uint8' },
   { name: 'utype', type: 'uint8' },
   { name: 'signature', type: 'bytes' },
 ] as const;
