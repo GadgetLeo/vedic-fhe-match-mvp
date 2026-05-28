@@ -111,6 +111,16 @@ export const horoscopeAbi = [
   },
   {
     type: 'function',
+    name: 'computeCompatibilityBatch',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'user', type: 'address' },
+      { name: 'candidates', type: 'address[]' },
+    ],
+    outputs: [{ name: 'computedCount', type: 'uint256' }],
+  },
+  {
+    type: 'function',
     name: 'requestReveal',
     stateMutability: 'nonpayable',
     inputs: [{ name: 'other', type: 'address' }],
@@ -460,21 +470,17 @@ export async function scanAndComputeMatchesForWallet(account: `0x${string}`, onS
     return 0;
   }
 
-  let submitted = 0;
-  for (const candidate of candidates) {
-    onStep(`Scanning encrypted profile ${submitted + 1} of ${candidates.length}`);
-    const hash = await walletClient.writeContract({
-      address: CONTRACT_ADDRESS,
-      abi: horoscopeAbi,
-      functionName: 'computeCompatibilityFor',
-      args: [account, candidate.address],
-      gas: COMPUTE_MATCH_GAS_LIMIT,
-    });
-    await publicClient.waitForTransactionReceipt({ hash });
-    submitted += 1;
-  }
+  onStep(`Scanning ${candidates.length} encrypted profiles`);
+  const hash = await walletClient.writeContract({
+    address: CONTRACT_ADDRESS,
+    abi: horoscopeAbi,
+    functionName: 'computeCompatibilityBatch',
+    args: [account, candidates.map((candidate) => candidate.address)],
+    gas: COMPUTE_MATCH_GAS_LIMIT * BigInt(candidates.length),
+  });
+  await publicClient.waitForTransactionReceipt({ hash });
 
-  return submitted;
+  return candidates.length;
 }
 
 export async function computeAndDecryptMatch(other: `0x${string}`, self: `0x${string}`, onStep: (label: string) => void) {
