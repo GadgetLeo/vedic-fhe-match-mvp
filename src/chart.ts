@@ -16,44 +16,48 @@ function wrap(value: number, size: number) {
   return ((value % size) + size) % size;
 }
 
+function locationBucket(location: string) {
+  return hashString(location.trim().toLowerCase()) % 3;
+}
+
 export function deriveChartFeatures(birth: BirthForm): ChartFeatures {
-  const seed = hashString(`${birth.date}|${birth.time}|${birth.location}|${birth.timezone}`);
   const [year, month, day] = birth.date.split('-').map((part) => Number(part) || 0);
   const [hour, minute] = birth.time.split(':').map((part) => Number(part) || 0);
-  const locationSeed = hashString(birth.location.toLowerCase());
-  const tzSeed = hashString(birth.timezone.toLowerCase());
+  const placeBand = locationBucket(birth.location);
+  const timeBand = Math.floor(hour / 2);
+  const minuteBand = Math.floor(minute / 20);
 
-  const solarBase = wrap(year + month * 3 + day + Math.floor(seed / 97), signCount);
-  const lunarBase = wrap(day * 2 + hour + Math.floor(seed / 31), signCount);
-  const ascBase = wrap(hour + Math.floor(minute / 10) + locationSeed, signCount);
+  const solarBase = wrap(month - 1, signCount);
+  const lunarBase = wrap(day + timeBand, signCount);
+  const ascBase = wrap(timeBand + minuteBand + placeBand, signCount);
 
   return {
     moonSign: lunarBase,
-    nakshatra: wrap(day + hour + Math.floor(seed / 11), nakshatraCount),
+    nakshatra: wrap(day + Math.floor(hour / 3), nakshatraCount),
     ascSign: ascBase,
     sunSign: solarBase,
-    venusSign: wrap(solarBase + 2 + Math.floor(seed / 101), signCount),
-    marsSign: wrap(lunarBase + 5 + Math.floor(seed / 211), signCount),
-    jupiterSign: wrap(solarBase + 9 + Math.floor(tzSeed / 17), signCount),
-    saturnSign: wrap(lunarBase + 10 + Math.floor(seed / 307), signCount),
+    venusSign: wrap(solarBase + 1 + (month % 2), signCount),
+    marsSign: wrap(lunarBase + 5 + Math.floor(day / 15), signCount),
+    jupiterSign: wrap(year + month, signCount),
+    saturnSign: wrap(Math.floor(year / 2) + month, signCount),
     seventhHouseSign: wrap(ascBase + 6, signCount),
-    venusHouse: wrap(month + hour + Math.floor(seed / 401), signCount) + 1,
-    marsHouse: wrap(day + minute + Math.floor(seed / 503), signCount) + 1,
+    venusHouse: wrap(month + timeBand, signCount) + 1,
+    marsHouse: wrap(day + minuteBand, signCount) + 1,
   };
 }
 
 export function getTier(score: number): MatchTier {
-  if (score >= 95) return 'Cosmic Match';
-  if (score >= 85) return 'Rare Match';
-  if (score >= 70) return 'Strong Match';
+  if (score >= 90) return 'Cosmic Match';
+  if (score >= 75) return 'Rare Match';
+  if (score >= 50) return 'Strong Match';
   return 'No Reveal';
 }
 
 export function getBadges(score: number) {
-  if (score >= 95) return ['Emotional Sync', 'Chemistry Signal', 'House Alignment'];
-  if (score >= 85) return ['Emotional Sync', 'House Alignment'];
-  if (score >= 70) return ['Chemistry Signal', 'Encrypted Match'];
-  return ['Private Result'];
+  if (score >= 90) return ['Emotional Sync', 'Chemistry Signal', 'House Alignment'];
+  if (score >= 75) return ['Emotional Sync', 'House Alignment'];
+  if (score >= 50) return ['Chemistry Signal', 'Encrypted Match'];
+  return ['Soft Signal', 'Private Result'];
 }
 
 export const signNames = [
