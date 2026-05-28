@@ -7,6 +7,7 @@ import {
   decryptRevealedMatch,
   encryptAndSaveProfile,
   fetchMatchRecordsForWallet,
+  fetchProfileByAddress,
   requestMatchReveal,
 } from './contract';
 import { deriveChartFeatures, getBadges, getTier, nakshatraNames, signNames } from './chart';
@@ -52,6 +53,7 @@ export function App() {
   const [birth, setBirth] = useState(initialBirth);
   const [matches, setMatches] = useState<MatchRecord[]>([]);
   const [selectedMatch, setSelectedMatch] = useState<MatchRecord | null>(null);
+  const [sealedProfile, setSealedProfile] = useState<PublicProfile | null>(null);
   const [status, setStatus] = useState('Ready to seal your chart');
   const [isBusy, setIsBusy] = useState(false);
   const [match, setMatch] = useState<MatchResult | null>(null);
@@ -64,6 +66,7 @@ export function App() {
     if (!account) {
       setMatches([]);
       setSelectedMatch(null);
+      setSealedProfile(null);
       setMatch(null);
       setStatus('Demo matches visible until a wallet connects');
     }
@@ -76,6 +79,7 @@ export function App() {
       const address = await connectWallet();
       setAccount(address);
       setStatus('Wallet connected on Base Sepolia');
+      await loadSealedProfile(address);
       await refreshMatches(address);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'Wallet connection failed');
@@ -85,17 +89,41 @@ export function App() {
   }
 
   async function handleSave() {
+    if (!account) {
+      setStatus('Connect your wallet before sealing a profile');
+      return;
+    }
+
+    if (sealedProfile) {
+      setStatus('This wallet already has a sealed profile');
+      return;
+    }
+
     setIsBusy(true);
     setMatch(null);
     try {
       await encryptAndSaveProfile(profile, chart, setStatus);
-      setStatus('Encrypted chart stored. Automatic matching can now scan your profile.');
+      await loadSealedProfile(account);
+      setStatus('Profile sealed on-chain. Automatic matching can now scan your profile.');
       await refreshMatches(account);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'Encrypted profile failed');
     } finally {
       setIsBusy(false);
     }
+  }
+
+  async function loadSealedProfile(viewer: `0x${string}`) {
+    const existingProfile = await fetchProfileByAddress(viewer);
+    setSealedProfile(existingProfile);
+    if (existingProfile) {
+      setProfile({
+        displayName: existingProfile.displayName,
+        xHandle: existingProfile.xHandle,
+        avatarColor: existingProfile.avatarColor,
+      });
+    }
+    return existingProfile;
   }
 
   async function refreshMatches(viewer: `0x${string}` | null = account) {
@@ -174,6 +202,8 @@ export function App() {
           profile={profile}
           birth={birth}
           chart={chart}
+          account={account}
+          sealedProfile={sealedProfile}
           isBusy={isBusy}
           onProfileChange={setProfile}
           onBirthChange={setBirth}
@@ -240,6 +270,8 @@ function ProfilePanel({
   profile,
   birth,
   chart,
+  account,
+  sealedProfile,
   isBusy,
   onProfileChange,
   onBirthChange,
@@ -248,49 +280,92 @@ function ProfilePanel({
   profile: ProfileForm;
   birth: BirthForm;
   chart: ReturnType<typeof deriveChartFeatures>;
+  account: `0x${string}` | null;
+  sealedProfile: PublicProfile | null;
   isBusy: boolean;
   onProfileChange: (profile: ProfileForm) => void;
   onBirthChange: (birth: BirthForm) => void;
   onSave: () => void;
 }) {
+  const hasSealedProfile = Boolean(sealedProfile);
+  const controlsDisabled = isBusy || hasSealedProfile;
+  const actionLabel = !account ? 'Connect wallet to seal profile' : hasSealedProfile ? 'Profile already sealed' : 'Encrypt chart & store profile';
+
   return (
     <section className="panel profile-panel">
       <div className="panel-title">
         <LockKeyhole size={18} />
         <h2>Seal Profile</h2>
       </div>
+      {sealedProfile && (
+        <div className="sealed-profile-card">
+          <span className="avatar" style={{ background: sealedProfile.avatarColor }} />
+          <span>
+            <strong>{sealedProfile.displayName}</strong>
+            <small>{sealedProfile.xHandle}</small>
+          </span>
+          <em>sealed v{(sealedProfile.version ?? 1n).toString()}</em>
+        </div>
+      )}
       <div className="form-grid">
         <label>
           Display name
-          <input value={profile.displayName} onChange={(event) => onProfileChange({ ...profile, displayName: event.target.value })} />
+          <input
+            value={profile.displayName}
+            disabled={controlsDisabled}
+            onChange={(event) => onProfileChange({ ...profile, displayName: event.target.value })}
+          />
         </label>
         <label>
           X handle
-          <input value={profile.xHandle} onChange={(event) => onProfileChange({ ...profile, xHandle: event.target.value })} />
+          <input
+            value={profile.xHandle}
+            disabled={controlsDisabled}
+            onChange={(event) => onProfileChange({ ...profile, xHandle: event.target.value })}
+          />
         </label>
         <label>
           Aura color
           <input
             type="color"
             value={profile.avatarColor}
+            disabled={controlsDisabled}
             onChange={(event) => onProfileChange({ ...profile, avatarColor: event.target.value })}
           />
         </label>
         <label>
           Birth date
-          <input type="date" value={birth.date} onChange={(event) => onBirthChange({ ...birth, date: event.target.value })} />
+          <input
+            type="date"
+            value={birth.date}
+            disabled={controlsDisabled}
+            onChange={(event) => onBirthChange({ ...birth, date: event.target.value })}
+          />
         </label>
         <label>
           Birth time
-          <input type="time" value={birth.time} onChange={(event) => onBirthChange({ ...birth, time: event.target.value })} />
+          <input
+            type="time"
+            value={birth.time}
+            disabled={controlsDisabled}
+            onChange={(event) => onBirthChange({ ...birth, time: event.target.value })}
+          />
         </label>
         <label>
           Birth city / country
-          <input value={birth.location} onChange={(event) => onBirthChange({ ...birth, location: event.target.value })} />
+          <input
+            value={birth.location}
+            disabled={controlsDisabled}
+            onChange={(event) => onBirthChange({ ...birth, location: event.target.value })}
+          />
         </label>
         <label className="span-two">
           Timezone
-          <input value={birth.timezone} onChange={(event) => onBirthChange({ ...birth, timezone: event.target.value })} />
+          <input
+            value={birth.timezone}
+            disabled={controlsDisabled}
+            onChange={(event) => onBirthChange({ ...birth, timezone: event.target.value })}
+          />
         </label>
       </div>
 
@@ -309,9 +384,9 @@ function ProfilePanel({
         </div>
       </div>
 
-      <button className="primary-action" disabled={isBusy} onClick={onSave}>
+      <button className="primary-action" disabled={isBusy || hasSealedProfile} onClick={onSave}>
         <ShieldCheck size={18} />
-        Encrypt chart & store profile
+        {actionLabel}
       </button>
     </section>
   );
