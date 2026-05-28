@@ -9,6 +9,7 @@ import {
   fetchMatchRecordsForWallet,
   fetchProfileByAddress,
   requestMatchReveal,
+  scanAndComputeMatchesForWallet,
 } from './contract';
 import { deriveChartFeatures, getBadges, getTier, nakshatraNames, signNames } from './chart';
 import { BirthForm, MatchRecord, MatchResult, ProfileForm, PublicProfile } from './types';
@@ -80,7 +81,7 @@ export function App() {
       setAccount(address);
       setStatus('Wallet connected on Base Sepolia');
       await loadSealedProfile(address);
-      await refreshMatches(address);
+      await refreshMatches(address, false);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'Wallet connection failed');
     } finally {
@@ -105,7 +106,7 @@ export function App() {
       await encryptAndSaveProfile(profile, chart, setStatus);
       await loadSealedProfile(account);
       setStatus('Profile sealed on-chain. Automatic matching can now scan your profile.');
-      await refreshMatches(account);
+      await refreshMatches(account, true);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'Encrypted profile failed');
     } finally {
@@ -126,7 +127,7 @@ export function App() {
     return existingProfile;
   }
 
-  async function refreshMatches(viewer: `0x${string}` | null = account) {
+  async function refreshMatches(viewer: `0x${string}` | null = account, shouldScan = true) {
     if (!viewer) {
       setMatches([]);
       setSelectedMatch(null);
@@ -134,15 +135,22 @@ export function App() {
       return;
     }
 
-    setStatus('Checking your private match queue');
+    setStatus(shouldScan ? 'Scanning sealed profiles for your wallet' : 'Checking your private match queue');
     try {
+      const computedCount = shouldScan ? await scanAndComputeMatchesForWallet(viewer, setStatus) : 0;
       const nextMatches = await fetchMatchRecordsForWallet(viewer);
       setMatches(nextMatches);
       setSelectedMatch((current) => {
         const refreshed = current ? nextMatches.find((item) => item.key === current.key) : null;
         return refreshed ?? nextMatches[0] ?? null;
       });
-      setStatus(nextMatches.length > 0 ? 'Encrypted match found' : 'Scanning for compatible sealed profiles');
+      setStatus(
+        nextMatches.length > 0
+          ? computedCount > 0
+            ? 'New encrypted match found'
+            : 'Encrypted match found'
+          : 'No sealed profiles ready to match yet',
+      );
     } catch (error) {
       setMatches([]);
       setSelectedMatch(null);
@@ -156,12 +164,12 @@ export function App() {
     setMatch(null);
     try {
       await requestMatchReveal(selectedMatch.other, setStatus);
-      await refreshMatches(account);
+      await refreshMatches(account, false);
       const score = await decryptRevealedMatch(selectedMatch.other, account, setStatus);
       setMatch({ score, tier: getTier(score), badges: getBadges(score) });
       setStatus(score >= 70 ? 'Match card revealed' : 'Revealed score is below share threshold');
     } catch (error) {
-      await refreshMatches(account);
+      await refreshMatches(account, false);
       setStatus(error instanceof Error ? error.message : 'Reveal request failed');
     } finally {
       setIsBusy(false);
@@ -217,7 +225,7 @@ export function App() {
           isBusy={isBusy}
           status={status}
           hasContract={hasContract}
-          onRefresh={refreshMatches}
+          onRefresh={() => refreshMatches(account, true)}
           onSelect={setSelectedMatch}
           onReveal={revealMatch}
         />
@@ -444,7 +452,8 @@ function MatchPanel({
           ))}
         {!showDemo && matches.length === 0 && (
           <div className="empty-private-list">
-            No encrypted matches yet. The matcher scans sealed profiles after you save yours.
+            No encrypted matches yet. Refresh scans sealed profiles and creates new private match records for this
+            wallet.
           </div>
         )}
         {!showDemo && matches.map((matchRecord, index) => (
@@ -469,7 +478,7 @@ function MatchPanel({
       <div className="match-actions">
         <button className="secondary-action" disabled={isBusy} onClick={onRefresh}>
           <RefreshCw size={17} />
-          Refresh
+          Scan
         </button>
         <button className="primary-action" disabled={isBusy || !account || !selected || (selected.youRevealed && !selected.bothRevealed)} onClick={onReveal}>
           <Sparkles size={18} />
