@@ -74,19 +74,16 @@ contract HoroscopeMatcher {
         string calldata avatarColor,
         ChartInput calldata encryptedChart
     ) external {
-        bool isNewProfile = !profiles[msg.sender].exists;
-        uint64 nextVersion = profiles[msg.sender].version + 1;
+        require(!profiles[msg.sender].exists, "PROFILE_ALREADY_EXISTS");
 
-        if (isNewProfile) {
-            members.push(msg.sender);
-        }
+        members.push(msg.sender);
 
         profiles[msg.sender] = Profile({
             displayName: displayName,
             xHandle: xHandle,
             avatarColor: avatarColor,
             createdAt: uint64(block.timestamp),
-            version: nextVersion,
+            version: 1,
             exists: true
         });
 
@@ -106,7 +103,7 @@ contract HoroscopeMatcher {
 
         _allowChart(msg.sender);
 
-        emit ProfileSaved(msg.sender, displayName, xHandle, nextVersion);
+        emit ProfileSaved(msg.sender, displayName, xHandle, 1);
         emit ChartEncrypted(msg.sender);
     }
 
