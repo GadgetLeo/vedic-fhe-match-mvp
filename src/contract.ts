@@ -262,7 +262,7 @@ export async function encryptAndSaveProfile(profile: ProfileForm, features: Char
   const walletClient = await getWalletClient();
   const cofheClient = createCofheClient(getCofheConfigForBaseSepolia());
 
-  onStep('Connecting Fhenix client');
+  onStep('Preparing private chart matching');
   await cofheClient.connect(publicClient as never, walletClient as never);
 
   const orderedValues = [
@@ -368,6 +368,19 @@ export async function fetchProfiles(): Promise<PublicProfile[]> {
   );
 
   return profiles.filter((profile) => profile.exists);
+}
+
+export async function fetchProfileCount(): Promise<number> {
+  if (!CONTRACT_ADDRESS) return 0;
+
+  const publicClient = getPublicClient();
+  const count = await publicClient.readContract({
+    address: CONTRACT_ADDRESS,
+    abi: horoscopeAbi,
+    functionName: 'memberCount',
+  });
+
+  return Number(count);
 }
 
 export async function fetchProfileByAddress(address: `0x${string}`): Promise<PublicProfile | null> {

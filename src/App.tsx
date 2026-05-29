@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Download, LockKeyhole, RefreshCw, Search, ShieldCheck, Sparkles, Wallet } from 'lucide-react';
+import { CSSProperties, PointerEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { Download, HeartHandshake, LockKeyhole, RefreshCw, Search, ShieldCheck, Sparkles, Wallet } from 'lucide-react';
 import { toPng } from 'html-to-image';
 import {
   connectWallet,
@@ -8,6 +8,7 @@ import {
   encryptAndSaveProfile,
   fetchMatchRecordsForWallet,
   fetchProfileByAddress,
+  fetchProfileCount,
   requestMatchReveal,
   scanAndComputeMatchesForWallet,
   waitForProfileByAddress,
@@ -17,7 +18,7 @@ import { BirthForm, MatchRecord, MatchResult, ProfileForm, PublicProfile } from 
 
 const initialProfile: ProfileForm = {
   displayName: 'Anika',
-  xHandle: '@anika_fhe',
+  xHandle: '@anika_moon',
   avatarColor: '#0AD9DC',
 };
 
@@ -49,6 +50,25 @@ const demoProfiles: PublicProfile[] = [
   },
 ];
 
+const zodiacLabels = ['Aries', 'Taurus', 'Gemini', 'Cancer', 'Leo', 'Virgo', 'Libra', 'Scorpio', 'Sagittarius', 'Capricorn', 'Aquarius', 'Pisces'];
+
+function timeToMinutes(time: string) {
+  const [hours, minutes] = time.split(':').map((value) => Number(value) || 0);
+  return Math.min(1439, Math.max(0, hours * 60 + minutes));
+}
+
+function minutesToTime(totalMinutes: number) {
+  const normalizedMinutes = ((Math.round(totalMinutes) % 1440) + 1440) % 1440;
+  const hours = Math.floor(normalizedMinutes / 60);
+  const minutes = normalizedMinutes % 60;
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+}
+
+function angleDistance(firstAngle: number, secondAngle: number) {
+  const difference = Math.abs(firstAngle - secondAngle) % 360;
+  return Math.min(difference, 360 - difference);
+}
+
 export function App() {
   const [account, setAccount] = useState<`0x${string}` | null>(null);
   const [profile, setProfile] = useState(initialProfile);
@@ -57,12 +77,17 @@ export function App() {
   const [selectedMatch, setSelectedMatch] = useState<MatchRecord | null>(null);
   const [sealedProfile, setSealedProfile] = useState<PublicProfile | null>(null);
   const [status, setStatus] = useState('Ready to seal your chart');
+  const [profileCount, setProfileCount] = useState<number | null>(null);
   const [isBusy, setIsBusy] = useState(false);
   const [match, setMatch] = useState<MatchResult | null>(null);
   const cardRef = useRef<HTMLDivElement>(null);
 
   const chart = useMemo(() => deriveChartFeatures(birth), [birth]);
   const hasContract = Boolean(CONTRACT_ADDRESS);
+
+  useEffect(() => {
+    void refreshProfileCount();
+  }, []);
 
   useEffect(() => {
     if (!account) {
@@ -108,6 +133,7 @@ export function App() {
       const sealed = await waitForProfileByAddress(account, setStatus);
       applySealedProfile(sealed);
       setStatus('Profile sealed on-chain. Automatic matching can now scan your profile.');
+      await refreshProfileCount();
       await refreshMatches(account, true);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'Encrypted profile failed');
@@ -130,6 +156,15 @@ export function App() {
         xHandle: existingProfile.xHandle,
         avatarColor: existingProfile.avatarColor,
       });
+    }
+  }
+
+  async function refreshProfileCount() {
+    try {
+      const count = await fetchProfileCount();
+      setProfileCount(count);
+    } catch {
+      setProfileCount(null);
     }
   }
 
@@ -199,18 +234,19 @@ export function App() {
 
       <section className="hero-band">
         <div>
-          <p className="eyebrow">Vedic synastry x confidential compute</p>
-          <h1>Private compatibility. Public spark.</h1>
+          <p className="eyebrow">Vedic matchmaking, made simple</p>
+          <h1>Meet someone your stars already recognize.</h1>
           <p className="hero-copy">
-            Birth-chart factors are derived locally, encrypted with Fhenix CoFHE, and matched on-chain without exposing
-            the chart. Only the compatibility result becomes content.
+            Add your birth details once and let the app look for chart chemistry in the background. When there is a
+            promising connection, you can open a match card and reveal the score together.
           </p>
+          <div className="hero-points" aria-label="App highlights">
+            <span>Birth details in</span>
+            <span>Compatible people out</span>
+            <span>Reveal when it feels right</span>
+          </div>
         </div>
-        <div className="cipher-panel" aria-label="Encrypted compute motif">
-          <span>ctHash: 0x7f3a...9e11</span>
-          <span>FHE.select(score &gt;= 45)</span>
-          <span>nakshatra.signal.locked</span>
-        </div>
+        <HeroOrbitPreview />
       </section>
 
       <section className="workspace-grid">
@@ -220,6 +256,7 @@ export function App() {
           chart={chart}
           account={account}
           sealedProfile={sealedProfile}
+          profileCount={profileCount}
           isBusy={isBusy}
           onProfileChange={setProfile}
           onBirthChange={setBirth}
@@ -248,6 +285,8 @@ export function App() {
         />
       </section>
 
+      <HowToSection />
+
       <footer className="app-footer">
         <FhenixLogo />
         <span>Built with Fhenix CoFHE on Base Sepolia</span>
@@ -256,14 +295,89 @@ export function App() {
   );
 }
 
+function HowToSection() {
+  return (
+    <section className="how-to-section" aria-labelledby="how-to-title">
+      <div>
+        <p className="eyebrow">Quick start</p>
+        <h2 id="how-to-title">How to use MoonMatch on Base Sepolia</h2>
+      </div>
+      <ol className="how-to-list">
+        <li>
+          <strong>Get test ETH</strong>
+          <span>
+            Open the official{' '}
+            <a href="https://docs.base.org/base-chain/tools/network-faucets" target="_blank" rel="noreferrer">
+              Base Sepolia faucet list
+            </a>
+            , choose a faucet, and send test ETH to your wallet.
+          </span>
+        </li>
+        <li>
+          <strong>Connect on Base Sepolia</strong>
+          <span>Use the Connect button. Your wallet should switch to Base Sepolia before you sign transactions.</span>
+        </li>
+        <li>
+          <strong>Seal your chart</strong>
+          <span>Enter your birth details, adjust the natal chart dial if needed, then seal your profile on-chain.</span>
+        </li>
+        <li>
+          <strong>Scan and reveal</strong>
+          <span>Scan for sealed profiles, then reveal a match card when both people are ready.</span>
+        </li>
+      </ol>
+    </section>
+  );
+}
+
+function HeroOrbitPreview() {
+  return (
+    <div className="hero-preview hero-orbit-preview" aria-label="Match preview">
+      <div className="orbit-name orbit-name-left">
+        <span>A</span>
+        <strong>Anika</strong>
+      </div>
+      <div className="orbit-name orbit-name-right">
+        <span>R</span>
+        <strong>Riya</strong>
+      </div>
+      <div className="orbit-art" aria-hidden="true">
+        <span className="orbit-ring orbit-ring-one" />
+        <span className="orbit-ring orbit-ring-two" />
+        <span className="orbit-ring orbit-ring-three" />
+        <span className="orbit-streak orbit-streak-one" />
+        <span className="orbit-streak orbit-streak-two" />
+        <span className="orbit-planet orbit-planet-one" />
+        <span className="orbit-planet orbit-planet-two" />
+        <span className="orbit-planet orbit-planet-three" />
+        <span className="orbit-moon" />
+        <span className="orbit-sun" />
+        <span className="orbit-zodiac orbit-zodiac-top">☾</span>
+        <span className="orbit-zodiac orbit-zodiac-right">♌</span>
+        <span className="orbit-zodiac orbit-zodiac-bottom">♓</span>
+        <span className="orbit-zodiac orbit-zodiac-left">♉</span>
+      </div>
+      <div className="orbit-caption">
+        <Sparkles size={18} />
+        <span>
+          <strong>Chart chemistry found</strong>
+          <small>Reveal together to open the match score.</small>
+        </span>
+      </div>
+    </div>
+  );
+}
+
 function Header({ account, isBusy, onConnect }: { account: string | null; isBusy: boolean; onConnect: () => void }) {
   return (
     <header className="app-header">
       <div className="brand-lockup">
-        <FhenixLogo />
+        <div className="brand-mark" aria-hidden="true">
+          <Sparkles size={18} />
+        </div>
         <div>
-          <strong>FHE Horoscope Match</strong>
-          <span>encrypted cosmic compatibility lab</span>
+          <strong>MoonMatch</strong>
+          <span>horoscope matching</span>
         </div>
       </div>
       <button className="wallet-button" disabled={isBusy} onClick={onConnect}>
@@ -288,6 +402,7 @@ function ProfilePanel({
   chart,
   account,
   sealedProfile,
+  profileCount,
   isBusy,
   onProfileChange,
   onBirthChange,
@@ -298,6 +413,7 @@ function ProfilePanel({
   chart: ReturnType<typeof deriveChartFeatures>;
   account: `0x${string}` | null;
   sealedProfile: PublicProfile | null;
+  profileCount: number | null;
   isBusy: boolean;
   onProfileChange: (profile: ProfileForm) => void;
   onBirthChange: (birth: BirthForm) => void;
@@ -385,26 +501,146 @@ function ProfilePanel({
         </label>
       </div>
 
-      <div className="chart-preview">
-        <div>
-          <span>Moon</span>
-          <strong>{signNames[chart.moonSign]}</strong>
-        </div>
-        <div>
-          <span>Nakshatra</span>
-          <strong>{nakshatraNames[chart.nakshatra]}</strong>
-        </div>
-        <div>
-          <span>Ascendant</span>
-          <strong>{signNames[chart.ascSign]}</strong>
-        </div>
-      </div>
+      <BirthChartDial birth={birth} chart={chart} disabled={controlsDisabled} onBirthChange={onBirthChange} />
 
       <button className="primary-action" disabled={isBusy || hasSealedProfile} onClick={onSave}>
         <ShieldCheck size={18} />
         {actionLabel}
       </button>
+      <div className="profile-count-live" aria-live="polite">
+        <span className="live-pulse" />
+        <strong>Profiles Sealed: {profileCount ?? '...'}</strong>
+      </div>
     </section>
+  );
+}
+
+function BirthChartDial({
+  birth,
+  chart,
+  disabled,
+  onBirthChange,
+}: {
+  birth: BirthForm;
+  chart: ReturnType<typeof deriveChartFeatures>;
+  disabled: boolean;
+  onBirthChange: (birth: BirthForm) => void;
+}) {
+  const minuteOfDay = timeToMinutes(birth.time);
+  const timeAngle = (minuteOfDay / 1440) * 360;
+  const moonAngle = chart.moonSign * 30 + 15;
+  const ascAngle = chart.ascSign * 30 + 15;
+  const sunAngle = chart.sunSign * 30 + 15;
+  const ascMarkerAngle = angleDistance(ascAngle, sunAngle) < 22 ? ascAngle - 8 : ascAngle;
+  const sunMarkerAngle = angleDistance(ascAngle, sunAngle) < 22 ? sunAngle + 8 : sunAngle;
+  const dialStyle = {
+    '--time-angle': `${timeAngle}deg`,
+    '--moon-angle': `${moonAngle}deg`,
+    '--asc-angle': `${ascMarkerAngle}deg`,
+    '--sun-angle': `${sunMarkerAngle}deg`,
+  } as CSSProperties;
+
+  function updateTimeFromPointer(event: PointerEvent<HTMLDivElement>) {
+    if (disabled) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+    const angle = Math.atan2(event.clientY - centerY, event.clientX - centerX);
+    const degrees = (angle * 180) / Math.PI + 90;
+    const normalizedDegrees = (degrees + 360) % 360;
+    onBirthChange({ ...birth, time: minutesToTime((normalizedDegrees / 360) * 1440) });
+  }
+
+  function nudgeTime(minutes: number) {
+    if (disabled) return;
+    onBirthChange({ ...birth, time: minutesToTime(minuteOfDay + minutes) });
+  }
+
+  return (
+    <div className="birth-chart-builder">
+      <div className="chart-preview">
+        <div>
+          <span>Personality</span>
+          <strong>{signNames[chart.ascSign]}</strong>
+          <small>Rising sign</small>
+        </div>
+        <div>
+          <span>Inner self</span>
+          <strong>{signNames[chart.moonSign]}</strong>
+          <small>Moon sign</small>
+        </div>
+        <div>
+          <span>Outer self</span>
+          <strong>{signNames[chart.sunSign]}</strong>
+          <small>Sun sign</small>
+        </div>
+      </div>
+
+      <div className="dial-heading">
+        <span>Natal chart dial</span>
+        <small>Drag the glowing marker to tune birth time, or use the time field above.</small>
+      </div>
+
+      <div
+        className={`birth-dial ${disabled ? 'disabled' : ''}`}
+        style={dialStyle}
+        role="slider"
+        aria-label="Birth time dial"
+        aria-valuemin={0}
+        aria-valuemax={1439}
+        aria-valuenow={minuteOfDay}
+        tabIndex={disabled ? -1 : 0}
+        onPointerDown={(event) => {
+          event.currentTarget.setPointerCapture(event.pointerId);
+          updateTimeFromPointer(event);
+        }}
+        onPointerMove={(event) => {
+          if (event.buttons === 1) updateTimeFromPointer(event);
+        }}
+        onKeyDown={(event) => {
+          if (event.key === 'ArrowLeft') {
+            event.preventDefault();
+            nudgeTime(-10);
+          }
+          if (event.key === 'ArrowRight') {
+            event.preventDefault();
+            nudgeTime(10);
+          }
+          if (event.key === 'ArrowUp') {
+            event.preventDefault();
+            nudgeTime(60);
+          }
+          if (event.key === 'ArrowDown') {
+            event.preventDefault();
+            nudgeTime(-60);
+          }
+        }}
+      >
+        {zodiacLabels.map((label, index) => (
+          <span
+            className="zodiac-label"
+            key={label}
+            style={{ '--sign-angle': `${index * 30 + 15}deg` } as CSSProperties}
+          >
+            {label.slice(0, 3)}
+          </span>
+        ))}
+        <span className="dial-marker moon-marker">Moon</span>
+        <span className="dial-marker asc-marker">Asc</span>
+        <span className="dial-marker sun-marker">Sun</span>
+        <span className="time-hand" />
+        <span className="dial-core">
+          <strong>{birth.time}</strong>
+          <small>{birth.date}</small>
+          <em>{nakshatraNames[chart.nakshatra]}</em>
+        </span>
+      </div>
+      <div className="dial-legend" aria-label="Chart marker legend">
+        <span><i className="legend-dot moon-dot" />Moon</span>
+        <span><i className="legend-dot asc-dot" />Rising</span>
+        <span><i className="legend-dot sun-dot" />Sun</span>
+      </div>
+    </div>
   );
 }
 
@@ -499,7 +735,7 @@ function MatchPanel({
       {!hasContract && (
         <p className="helper-copy">
           Add the deployed contract address as <code>VITE_HOROSCOPE_MATCHER_ADDRESS</code> to switch from demo cards to
-          live Fhenix matching.
+          live matching.
         </p>
       )}
     </section>
