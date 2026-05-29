@@ -4,7 +4,7 @@ pragma solidity ^0.8.28;
 import "@fhenixprotocol/cofhe-contracts/FHE.sol";
 
 contract HoroscopeMatcher {
-    uint16 public constant REVEAL_THRESHOLD = 50;
+    uint16 public constant REVEAL_THRESHOLD = 45;
 
     struct Profile {
         string displayName;
@@ -241,18 +241,19 @@ contract HoroscopeMatcher {
     function _score(Chart storage a, Chart storage b) private returns (euint16) {
         euint16 score = FHE.asEuint16(0);
 
-        score = FHE.add(score, _award(FHE.eq(a.moonSign, b.moonSign), 18));
-        score = FHE.add(score, _award(FHE.eq(a.nakshatra, b.nakshatra), 14));
-        score = FHE.add(score, _award(FHE.eq(a.ascSign, b.ascSign), 12));
-        score = FHE.add(score, _award(FHE.eq(a.sunSign, b.sunSign), 10));
+        score = FHE.add(score, _award(FHE.eq(a.moonSign, b.moonSign), 10));
+        score = FHE.add(score, _award(FHE.eq(a.nakshatra, b.nakshatra), 6));
+        score = FHE.add(score, _award(FHE.eq(a.ascSign, b.ascSign), 6));
+        score = FHE.add(score, _award(FHE.eq(a.sunSign, b.sunSign), 6));
+        score = FHE.add(score, _award(FHE.eq(a.venusSign, b.venusSign), 4));
+        score = FHE.add(score, _award(FHE.eq(a.marsSign, b.marsSign), 4));
         score = FHE.add(score, _award(FHE.eq(a.venusSign, b.marsSign), 8));
         score = FHE.add(score, _award(FHE.eq(b.venusSign, a.marsSign), 8));
-        score = FHE.add(score, _award(FHE.eq(a.seventhHouseSign, b.ascSign), 6));
-        score = FHE.add(score, _award(FHE.eq(b.seventhHouseSign, a.ascSign), 6));
-        score = FHE.add(score, _award(FHE.eq(a.jupiterSign, b.jupiterSign), 6));
-        score = FHE.add(score, _award(FHE.eq(a.saturnSign, b.saturnSign), 6));
-        score = FHE.add(score, _award(FHE.eq(a.venusHouse, b.marsHouse), 6));
-        score = FHE.add(score, _award(FHE.eq(b.venusHouse, a.marsHouse), 6));
+        score = FHE.add(score, _award(FHE.eq(a.jupiterSign, b.jupiterSign), 12));
+        score = FHE.add(score, _award(FHE.eq(a.saturnSign, b.saturnSign), 10));
+        score = FHE.add(score, _award(FHE.eq(a.seventhHouseSign, b.seventhHouseSign), 10));
+        score = FHE.add(score, _award(FHE.eq(a.venusHouse, b.venusHouse), 8));
+        score = FHE.add(score, _award(FHE.eq(a.marsHouse, b.marsHouse), 8));
 
         return score;
     }

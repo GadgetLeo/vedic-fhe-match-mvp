@@ -4,6 +4,7 @@ import { CofheClient, Encryptable, FheTypes } from '@cofhe/sdk';
 import { HardhatEthersSigner } from '@nomicfoundation/hardhat-ethers/signers';
 
 const highMatch = [3, 12, 6, 1, 8, 8, 10, 4, 0, 5, 5];
+const wideMatch = [4, 21, 7, 2, 8, 1, 10, 4, 0, 5, 5];
 const lowMatch = [9, 2, 1, 7, 3, 11, 6, 8, 4, 2, 10];
 
 async function encryptedChart(cofheClient: CofheClient, values: number[]) {
@@ -93,7 +94,24 @@ describe('HoroscopeMatcher', () => {
     const scoreHandle = await matcher.getScore(alice.address, bob.address);
     const score = await aliceClient.decryptForView(scoreHandle, FheTypes.Uint16).execute();
 
-    expect(score).to.equal(94n);
+    expect(score).to.equal(100n);
+  });
+
+  it('finds a match from compatible groups without requiring identical charts', async () => {
+    const matcher = await deployMatcher();
+    const aliceChart = await encryptedChart(aliceClient, highMatch);
+    const bobChart = await encryptedChart(bobClient, wideMatch);
+
+    await (await matcher.connect(alice).saveProfile('Anika', '@anika_fhe', '#1df8a4', aliceChart)).wait();
+    await (await matcher.connect(bob).saveProfile('Riya', '@riyaverse', '#e8b84a', bobChart)).wait();
+    await (await matcher.connect(alice).computeCompatibility(bob.address)).wait();
+    await (await matcher.connect(alice).requestReveal(bob.address)).wait();
+    await (await matcher.connect(bob).requestReveal(alice.address)).wait();
+
+    const scoreHandle = await matcher.getScore(alice.address, bob.address);
+    const score = await aliceClient.decryptForView(scoreHandle, FheTypes.Uint16).execute();
+
+    expect(score).to.equal(60n);
   });
 
   it('stores computed scores under a symmetric pair key and authorizes both users', async () => {
@@ -112,7 +130,7 @@ describe('HoroscopeMatcher', () => {
     const bobScore = await bobClient.decryptForView(reverseHandle, FheTypes.Uint16).execute();
 
     expect(reverseHandle).to.equal(forwardHandle);
-    expect(bobScore).to.equal(94n);
+    expect(bobScore).to.equal(100n);
   });
 
   it('keeps low compatibility below the reveal threshold', async () => {
@@ -166,7 +184,7 @@ describe('HoroscopeMatcher', () => {
     const highReveal = await aliceClient.decryptForView(highRevealHandle, FheTypes.Uint16).execute();
     const lowReveal = await aliceClient.decryptForView(lowRevealHandle, FheTypes.Uint16).execute();
 
-    expect(highReveal).to.equal(94n);
+    expect(highReveal).to.equal(100n);
     expect(lowReveal).to.equal(0n);
   });
 
@@ -234,7 +252,7 @@ describe('HoroscopeMatcher', () => {
 
     const scoreHandle = await matcher.getScore(alice.address, bob.address);
     const score = await aliceClient.decryptForView(scoreHandle, FheTypes.Uint16).execute();
-    expect(score).to.equal(94n);
+    expect(score).to.equal(100n);
   });
 
   it('resets reveal consent when a pair is recomputed', async () => {

@@ -10,22 +10,19 @@ An Fhenix-powered Vedic compatibility MVP. Users enter profile details and birth
 
 ## Scoring
 
-Score is out of `100`:
+Score is out of `100`. The live scoring model is Ashtakoota-inspired, but simplified for encrypted matching:
 
-- Moon sign: `20`
-- Nakshatra: `20`
-- Ascendant: `10`
-- Venus/Mars chemistry: `15`
-- Seventh-house overlap: `15`
-- Jupiter/Saturn stability: `10`
-- Relationship-house overlap: `10`
+- Exact Moon/Nakshatra/Ascendant/Sun signals: `28`
+- Venus and Mars chemistry signals: `24`
+- Moon harmony, temperament, and Bhakoot-style groups: `32`
+- Yoni-style chemistry and birth-time rhythm groups: `16`
 
 Reveal tiers:
 
-- Below `70`: no public reveal.
-- `70-84`: Strong Match.
-- `85-94`: Rare Match.
-- `95-100`: Cosmic Match.
+- Below `45`: no public reveal.
+- `45-74`: Strong Match.
+- `75-89`: Rare Match.
+- `90-100`: Cosmic Match.
 
 ## Setup
 

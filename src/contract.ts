@@ -10,6 +10,8 @@ export const BASE_SEPOLIA_CHAIN_ID = 84532;
 const SAVE_PROFILE_GAS_LIMIT = 2_500_000n;
 const COMPUTE_MATCH_GAS_LIMIT = 3_000_000n;
 const REVEAL_GAS_LIMIT = 900_000n;
+const PROFILE_READ_RETRIES = 8;
+const PROFILE_READ_RETRY_DELAY_MS = 1_500;
 
 const encryptedInputComponents = [
   { name: 'ctHash', type: 'uint256' },
@@ -308,8 +310,17 @@ export async function encryptAndSaveProfile(profile: ProfileForm, features: Char
     gas: SAVE_PROFILE_GAS_LIMIT,
   });
 
-  await publicClient.waitForTransactionReceipt({ hash });
+  const receipt = await publicClient.waitForTransactionReceipt({ hash });
+  if (receipt.status !== 'success') {
+    throw new Error('Profile transaction failed');
+  }
   return hash;
+}
+
+async function wait(ms: number) {
+  await new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
 }
 
 export async function fetchProfiles(): Promise<PublicProfile[]> {
@@ -389,6 +400,25 @@ export async function fetchProfileByAddress(address: `0x${string}`): Promise<Pub
     exists: profile[5],
     hasChart,
   };
+}
+
+export async function waitForProfileByAddress(
+  address: `0x${string}`,
+  onStep?: (label: string) => void,
+): Promise<PublicProfile> {
+  for (let attempt = 0; attempt < PROFILE_READ_RETRIES; attempt += 1) {
+    const profile = await fetchProfileByAddress(address);
+    if (profile?.hasChart) {
+      return profile;
+    }
+
+    if (attempt === 0) {
+      onStep?.('Confirming sealed profile on-chain');
+    }
+    await wait(PROFILE_READ_RETRY_DELAY_MS);
+  }
+
+  throw new Error('Profile transaction succeeded, but the profile is not visible yet. Refresh in a few seconds.');
 }
 
 export async function fetchMatchRecordsForWallet(account: `0x${string}`): Promise<MatchRecord[]> {

@@ -5,6 +5,7 @@ artifacts/
 typechain-types/
 .appdata/
 .localappdata/
+.cofhesdk/
 .vercel/
 ms-playwright/
 coverage/

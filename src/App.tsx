@@ -10,8 +10,9 @@ import {
   fetchProfileByAddress,
   requestMatchReveal,
   scanAndComputeMatchesForWallet,
+  waitForProfileByAddress,
 } from './contract';
-import { deriveChartFeatures, getBadges, getTier, nakshatraNames, signNames } from './chart';
+import { deriveChartFeatures, getBadges, getTier, nakshatraNames, revealThreshold, signNames } from './chart';
 import { BirthForm, MatchRecord, MatchResult, ProfileForm, PublicProfile } from './types';
 
 const initialProfile: ProfileForm = {
@@ -104,7 +105,8 @@ export function App() {
     setMatch(null);
     try {
       await encryptAndSaveProfile(profile, chart, setStatus);
-      await loadSealedProfile(account);
+      const sealed = await waitForProfileByAddress(account, setStatus);
+      applySealedProfile(sealed);
       setStatus('Profile sealed on-chain. Automatic matching can now scan your profile.');
       await refreshMatches(account, true);
     } catch (error) {
@@ -116,6 +118,11 @@ export function App() {
 
   async function loadSealedProfile(viewer: `0x${string}`) {
     const existingProfile = await fetchProfileByAddress(viewer);
+    applySealedProfile(existingProfile);
+    return existingProfile;
+  }
+
+  function applySealedProfile(existingProfile: PublicProfile | null) {
     setSealedProfile(existingProfile);
     if (existingProfile) {
       setProfile({
@@ -124,7 +131,6 @@ export function App() {
         avatarColor: existingProfile.avatarColor,
       });
     }
-    return existingProfile;
   }
 
   async function refreshMatches(viewer: `0x${string}` | null = account, shouldScan = true) {
@@ -149,7 +155,9 @@ export function App() {
           ? computedCount > 0
             ? 'New encrypted match found'
             : 'Encrypted match found'
-          : 'No sealed profiles ready to match yet',
+          : shouldScan
+            ? 'Profile sealed. No other sealed profiles ready to match yet'
+            : 'No sealed profiles ready to match yet',
       );
     } catch (error) {
       setMatches([]);
@@ -167,7 +175,7 @@ export function App() {
       await refreshMatches(account, false);
       const score = await decryptRevealedMatch(selectedMatch.other, account, setStatus);
       setMatch({ score, tier: getTier(score), badges: getBadges(score) });
-      setStatus(score >= 50 ? 'Match card revealed' : 'Candidate did not clear the match threshold');
+      setStatus(score >= revealThreshold ? 'Match card revealed' : 'Candidate did not clear the match threshold');
     } catch (error) {
       await refreshMatches(account, false);
       setStatus(error instanceof Error ? error.message : 'Reveal request failed');
@@ -200,7 +208,7 @@ export function App() {
         </div>
         <div className="cipher-panel" aria-label="Encrypted compute motif">
           <span>ctHash: 0x7f3a...9e11</span>
-          <span>FHE.select(score &gt;= 50)</span>
+          <span>FHE.select(score &gt;= 45)</span>
           <span>nakshatra.signal.locked</span>
         </div>
       </section>
@@ -514,10 +522,10 @@ function ShareCardPanel({
   onExport: () => void;
 }) {
   const visibleScore = match?.score ?? 0;
-  const visibleTier = match ? (visibleScore >= 50 ? match.tier : 'Below Threshold') : 'No Match Yet';
+  const visibleTier = match ? (visibleScore >= revealThreshold ? match.tier : 'Below Threshold') : 'No Match Yet';
   const visibleBadges = match?.badges ?? ['Encrypted', 'Pending Match'];
   const revealed = Boolean(match);
-  const shareable = revealed && visibleScore >= 50;
+  const shareable = revealed && visibleScore >= revealThreshold;
   const otherName = revealed && other ? other.displayName : 'Locked candidate';
   const otherHandle = revealed && other ? other.xHandle : selectedMatch ? 'reveals after mutual consent' : 'waiting for scan';
 
